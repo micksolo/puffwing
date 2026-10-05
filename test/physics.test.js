@@ -26,7 +26,7 @@ function fly(seed, policy, seconds) {
 
 test('GAME_VERSION is semver and shown to the build', () => {
   assert.match(GAME_VERSION, /^\d+\.\d+\.\d+$/)
-  assert.equal(GAME_VERSION, '1.2.0')
+  assert.equal(GAME_VERSION, '1.2.1')
 })
 
 test('holding dives the bird far below a glide in the first half second', () => {
