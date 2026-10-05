@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { diveTilt } from './physics.js'
 
 const sphereGeo = new THREE.SphereGeometry(1, 20, 14)
 const coneGeo = new THREE.ConeGeometry(0.32, 0.7, 10)
@@ -17,7 +18,8 @@ export function createBird(opts = {}) {
   }
   const group = new THREE.Group()
 
-  const body = new THREE.Mesh(sphereGeo, mk('#8fd0ff'))
+  const bodyMat = mk('#8fd0ff')
+  const body = new THREE.Mesh(sphereGeo, bodyMat)
   body.scale.set(1.2, 1.05, 1)
   group.add(body)
 
@@ -85,15 +87,20 @@ export function createBird(opts = {}) {
   group.add(crest2)
 
   group.frustumCulled = false
-  return { group, leftW, rightW }
+  return { group, leftW, rightW, bodyMat }
 }
 
-export function animateBird(b, { t, vx, vy, grounded }) {
-  const tilt = Math.atan2(vy, Math.max(vx, 6)) * 0.5
-  b.group.rotation.z = Math.max(-1.05, Math.min(0.55, tilt))
+export function animateBird(b, { t, vx, vy, grounded, hold }) {
+  b.group.rotation.z = diveTilt(vx, vy, !!hold, !!grounded)
+  const diving = !!hold
+  b.group.scale.set(diving ? 1.14 : 1, diving ? 0.78 : 1, 1)
+  if (b.bodyMat && !b.bodyMat.transparent) {
+    b.bodyMat.color.set(diving ? '#ff9a3c' : '#8fd0ff')
+    b.bodyMat.emissive.set(diving ? '#d4651a' : '#000000')
+  }
   const flapSpeed = grounded ? 3 : 13
-  const amp = grounded ? 0.22 : 0.85
-  const f = Math.sin(t * flapSpeed) * amp
+  const amp = diving ? 0.08 : grounded ? 0.22 : 0.85
+  const f = diving ? -0.35 : Math.sin(t * flapSpeed) * amp
   b.leftW.rotation.x = f
   b.rightW.rotation.x = -f
 }

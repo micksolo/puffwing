@@ -1,7 +1,8 @@
 import { createClient } from '@supabase/supabase-js'
 
-const url = import.meta.env.VITE_SUPABASE_URL
-const key = import.meta.env.VITE_SUPABASE_ANON_KEY
+const env = import.meta.env || {}
+const url = env.VITE_SUPABASE_URL
+const key = env.VITE_SUPABASE_ANON_KEY
 const client = url && key ? createClient(url, key) : null
 
 export const online = !!client

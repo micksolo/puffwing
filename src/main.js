@@ -1,6 +1,6 @@
 import * as THREE from 'three'
-import './style.css'
 import { World } from './world.js'
+import { GAME_VERSION } from './version.js'
 import { createBird, animateBird } from './bird.js'
 import { Run } from './game.js'
 import * as lb from './leaderboard.js'
@@ -9,6 +9,7 @@ import { todayKey, hashString, randomName } from './rng.js'
 const $ = (s) => document.getElementById(s)
 
 const canvas = $('c')
+canvas.tabIndex = 0
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true })
 renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2))
 
@@ -48,30 +49,78 @@ addEventListener('resize', resize)
 resize()
 
 const input = { hold: false }
-function holdOn() {
-  if (state.screen === 'play') {
-    input.hold = true
+const divePad = $('divepad')
+
+function typingTarget(el) {
+  if (!el || !el.tagName) return false
+  const tag = el.tagName
+  return tag === 'INPUT' || tag === 'TEXTAREA' || el.isContentEditable
+}
+
+function grabFocus() {
+  const ae = document.activeElement
+  if (ae && ae !== canvas && typeof ae.blur === 'function') ae.blur()
+  try { canvas.focus({ preventScroll: true }) } catch { canvas.focus() }
+}
+
+function setHold(next) {
+  if (state.screen !== 'play') {
+    input.hold = false
+    return
+  }
+  input.hold = !!next
+  if (next) {
     $('hint').classList.add('hidden')
     resumeAudio()
   }
 }
-addEventListener('pointerdown', (e) => {
-  if (e.target.closest('button, input, a, label')) return
-  holdOn()
+
+function pointerHold(e) {
+  if (state.screen !== 'play') return
+  if (e.target.closest && e.target.closest('button, input, a, label')) return
+  e.preventDefault()
+  setHold(true)
+}
+
+addEventListener('pointerdown', pointerHold)
+addEventListener('pointerup', () => { if (!input.keys) input.hold = false })
+addEventListener('pointercancel', () => { if (!input.keys) input.hold = false })
+divePad.addEventListener('pointerdown', (e) => {
+  e.preventDefault()
+  e.stopPropagation()
+  try { divePad.setPointerCapture(e.pointerId) } catch {}
+  setHold(true)
 })
-addEventListener('pointerup', () => (input.hold = false))
-addEventListener('pointercancel', () => (input.hold = false))
+divePad.addEventListener('pointerup', (e) => {
+  if (!input.keys) input.hold = false
+  try { divePad.releasePointerCapture(e.pointerId) } catch {}
+})
+divePad.addEventListener('pointercancel', () => { if (!input.keys) input.hold = false })
+
 const isDiveKey = (e) =>
   e.code === 'Space' || e.code === 'ArrowDown' || e.key === ' ' || e.key === 'ArrowDown' || e.keyCode === 32 || e.keyCode === 40
+
+// Capture phase runs before a focused button turns Space into a click,
+// which used to restart the flight (or scroll) and clear the dive.
 addEventListener('keydown', (e) => {
-  if (isDiveKey(e)) {
-    e.preventDefault()
-    holdOn()
-  }
-})
+  if (!isDiveKey(e)) return
+  if (typingTarget(document.activeElement)) return
+  if (state.screen !== 'play') return
+  e.preventDefault()
+  e.stopPropagation()
+  input.keys = true
+  setHold(true)
+}, true)
 addEventListener('keyup', (e) => {
-  if (isDiveKey(e)) input.hold = false
-})
+  if (!isDiveKey(e)) return
+  if (state.screen === 'play') {
+    e.preventDefault()
+    e.stopPropagation()
+  }
+  input.keys = false
+  input.hold = false
+}, true)
+addEventListener('blur', () => { input.hold = false; input.keys = false })
 addEventListener('contextmenu', (e) => e.preventDefault())
 
 const audio = { ctx: null, muted: localStorage.getItem('puffwing.mute') === '1' }
@@ -195,6 +244,8 @@ function processEvents(run) {
     } else if (e.type === 'night') {
       popCenter('The sun has set…', 'pop-night')
       sNight()
+    } else if (e.type === 'launch') {
+      pop(e.x, e.y + 1.4, 'SOAR', 'pop-ghost')
     } else if (e.type === 'breeze') {
       pop(e.x, e.y + 2.5, 'a friendly breeze~', 'pop-ghost')
       world.emit(e.x - 2, e.y, { count: 10, color: '#e8f6ff', spread: 6, up: 1.5, grav: false })
@@ -250,6 +301,9 @@ function startRun(mode) {
   $('over').classList.add('hidden')
   $('hud').classList.remove('hidden')
   $('fevertag').classList.add('hidden')
+  $('divepad').classList.remove('hidden')
+  $('ver').textContent = 'v' + GAME_VERSION
+  grabFocus()
   showHint()
   state.hint2 = false
   sStart()
@@ -299,6 +353,7 @@ async function endRun() {
   $('fevertag').classList.add('hidden')
   $('hint').classList.add('hidden')
   $('holdind').classList.add('hidden')
+  $('divepad').classList.add('hidden')
   $('overtitle').textContent = run.postNight > 0 && run.dayLeft <= 0 ? 'Night has fallen' : 'Flight complete'
   $('finalscore').textContent = run.score.toLocaleString()
   $('breakdown').innerHTML =
@@ -336,17 +391,20 @@ $('retry').addEventListener('click', () => startRun(state.run && state.run.mode 
 $('menu').addEventListener('click', () => {
   state.screen = 'start'
   state.run = null
+  input.hold = false
   $('over').classList.add('hidden')
   $('hud').classList.add('hidden')
+  $('divepad').classList.add('hidden')
   $('start').classList.remove('hidden')
   loadBoard()
 })
+$('ver').textContent = 'v' + GAME_VERSION
 
 const clock = new THREE.Clock()
 let menuCam = 0
 let lastTele = 0
 
-window.__puffwing = { state, input, world, camera }
+window.__puffwing = { state, input, world, camera, version: GAME_VERSION, birdRot: 0 }
 
 const zoomFit = () => Math.max(1, Math.min(2.6, 1.7 / camera.aspect))
 
@@ -360,7 +418,8 @@ renderer.setAnimationLoop(() => {
     world.update(dt, run.camX, run.camY, run.dayT, { bird: run.bird, taken: run.taken })
     bird.group.visible = true
     bird.group.position.set(run.bird.x, run.bird.y, 1.2)
-    animateBird(bird, { t: el, vx: run.bird.vx, vy: run.bird.vy, grounded: run.bird.grounded })
+    animateBird(bird, { t: el, vx: run.bird.vx, vy: run.bird.vy, grounded: run.bird.grounded, hold: input.hold })
+    window.__puffwing.birdRot = bird.group.rotation.z
     if (run.fever) {
       feverColor.setHSL((el * 0.7) % 1, 0.85, 0.62)
       world.emit(run.bird.x - 1, run.bird.y - 0.2, { count: 2, color: feverColor, spread: 1.6, up: 0.5, ttl: 0.9, grav: false })
@@ -379,14 +438,11 @@ renderer.setAnimationLoop(() => {
     const holdind = $('holdind')
     holdind.classList.toggle('hidden', false)
     holdind.classList.toggle('on', input.hold)
+    divePad.classList.toggle('on', input.hold)
     if (el - lastTele > 0.15) {
       lastTele = el
       const b = run.bird
-      holdind.textContent =
-        'v11 · hold ' + (input.hold ? 1 : 0) +
-        ' · air ' + (b.grounded ? 0 : 1) +
-        ' · spd ' + run.speed.toFixed(1) +
-        ' · slp ' + run.terrain.slope(b.x).toFixed(2)
+      holdind.textContent = input.hold ? 'DIVING  v' + GAME_VERSION : 'DIVE  v' + GAME_VERSION
     }
     if (!state.hint2 && run.time > 4 && run.bird.grounded && run.speed < 6) {
       state.hint2 = true

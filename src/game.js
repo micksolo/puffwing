@@ -37,9 +37,14 @@ export class Run {
     this.recAcc = 0
     this.events = []
     this.over = false
+    this.endCause = ''
     this.postNight = 0
     this.slowT = 0
     this.lastPerfect = -10
+    this.dives = 0
+    this.launches = 0
+    this.airtime = 0
+    this.holdPrev = false
     this.camX = this.bird.x
     this.camY = this.bird.y + 4
     this.camZ = 26
@@ -66,6 +71,9 @@ export class Run {
 
   update(dt, hold) {
     if (this.over) return
+    const pressed = !!hold
+    if (pressed && !this.holdPrev) this.dives++
+    this.holdPrev = pressed
     this.acc += Math.min(dt, 0.1)
     const h = 1 / 120
     let guard = 0
@@ -80,6 +88,11 @@ export class Run {
     const b = this.bird
     const ev = {}
     stepBird(b, hold, this.terrain, dt, ev)
+    if (!b.grounded) this.airtime += dt
+    if (ev.launch) {
+      this.launches++
+      this.events.push({ type: 'launch', x: b.x, y: b.y })
+    }
     if (ev.landing) this.handleLanding(ev.landing)
     this.collectCoins()
     this.checkStuck(dt)
@@ -97,7 +110,9 @@ export class Run {
       }
     } else {
       this.postNight += dt
-      if ((b.grounded && this.speed < 4) || this.postNight > 12) this.finish()
+      if ((b.grounded && this.speed < 4) || this.postNight > 12) {
+        this.finish(b.grounded && this.speed < 4 ? 'beach' : 'night')
+      }
     }
     if (this.fever) {
       this.feverT -= dt
@@ -202,9 +217,10 @@ export class Run {
     this.camZ += (tz - this.camZ) * Math.min(1, 2 * dt)
   }
 
-  finish() {
+  finish(cause) {
     if (this.over) return
     this.over = true
-    this.events.push({ type: 'end' })
+    this.endCause = cause || 'beach'
+    this.events.push({ type: 'end', cause: this.endCause })
   }
 }

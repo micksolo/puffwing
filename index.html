@@ -9,9 +9,10 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/src/style.css" />
 </head>
 <body>
-  <canvas id="c"></canvas>
+  <canvas id="c" tabindex="0" aria-label="Puffwing flight"></canvas>
 
   <div id="hud" class="hidden">
     <div class="hud-box">
@@ -34,9 +35,10 @@
   <div id="fevertag" class="hidden">✦ FEVER ✦</div>
   <div id="popups"></div>
   <div id="hint" class="hidden">HOLD TO DIVE</div>
-  <div id="holdind" class="hidden">DIVE · v11</div>
+  <div id="holdind" class="hidden">DIVE</div>
+  <div id="divepad" class="hidden" role="button" aria-label="Hold to dive">HOLD</div>
 
-  <button id="mute" aria-label="toggle sound">
+  <button type="button" id="mute" aria-label="toggle sound">
     <svg id="sndon" viewBox="0 0 24 24" width="22" height="22"><path d="M4 9v6h4l5 4V5L8 9H4z" fill="#7a5a4a"/><path d="M16.5 8.5a5 5 0 0 1 0 7" stroke="#7a5a4a" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
     <svg id="sndoff" viewBox="0 0 24 24" width="22" height="22" style="display:none"><path d="M4 9v6h4l5 4V5L8 9H4z" fill="#7a5a4a"/><line x1="16" y1="9" x2="21" y2="15" stroke="#e05a5a" stroke-width="2.5" stroke-linecap="round"/><line x1="21" y1="9" x2="16" y2="15" stroke="#e05a5a" stroke-width="2.5" stroke-linecap="round"/></svg>
   </button>
@@ -52,15 +54,16 @@
         <span id="ghostname"></span>
       </div>
       <div class="btnrow">
-        <button id="playdaily" class="btn">Daily Flight</button>
-        <button id="playfree" class="btn btn2">Free Flight</button>
+        <button type="button" id="playdaily" class="btn">Daily Flight</button>
+        <button type="button" id="playfree" class="btn btn2">Free Flight</button>
       </div>
       <div class="boardwrap">
         <div class="boardtitle">Today's leaderboard</div>
         <div id="board" class="board"><div class="loading">loading…</div></div>
         <div id="boardsrc" class="boardsrc"></div>
       </div>
-      <p class="howto">Hold <b>SPACE</b> or <b>touch</b> to dive · release to soar · land on a downhill for a <b>PERFECT</b> boost</p>
+      <p class="howto">Hold <b>SPACE</b>, the <b>HOLD</b> button, or the screen to dive · release on an uphill to launch · land on a downhill for a <b>PERFECT</b></p>
+      <p id="ver" class="ver"></p>
       <p id="portraithint">↻ Rotate your phone for the best flight</p>
     </div>
   </div>
@@ -76,12 +79,20 @@
         <div id="board2" class="board"></div>
       </div>
       <div class="btnrow">
-        <button id="retry" class="btn">Fly again</button>
-        <button id="menu" class="btn btn2">Menu</button>
+        <button type="button" id="retry" class="btn">Fly again</button>
+        <button type="button" id="menu" class="btn btn2">Menu</button>
       </div>
     </div>
   </div>
 
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+      "@supabase/supabase-js": "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.109.0/+esm"
+    }
+  }
+  </script>
   <script type="module" src="/src/main.js"></script>
 </body>
 </html>
