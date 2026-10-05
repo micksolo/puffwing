@@ -1,10 +1,10 @@
 export const GLIDE_G = -18
 export const BIRD_R = 0.9
 export const MAX_SPEED = 64
-// A held dive aims at this descent and is not allowed to go steeper.
-const DIVE_TAN = Math.tan(40 * Math.PI / 180)
-const DIVE_TAN_MAX = Math.tan(46 * Math.PI / 180)
-const DIVE_PULL = 110
+// A held dive aims at about 55° and is not allowed to go near vertical.
+const DIVE_TAN = Math.tan(55 * Math.PI / 180)
+const DIVE_TAN_MAX = Math.tan(62 * Math.PI / 180)
+const DIVE_PULL = 220
 
 function capSpeed(b, hold) {
   const sp = Math.hypot(b.vx, b.vy)
@@ -25,8 +25,8 @@ function capSpeed(b, hold) {
 export function diveTilt(vx, vy, hold, grounded) {
   const along = Math.atan2(vy, Math.max(vx, 8))
   if (hold && !grounded) {
-    const aim = Math.min(along, -0.82)
-    return Math.max(-0.9, aim)
+    const aim = Math.min(along, -0.96)
+    return Math.max(-1.15, aim)
   }
   const tuck = hold && grounded ? 0.72 : 0
   const tilt = along * (hold ? 1 : 0.92) - tuck
@@ -36,7 +36,7 @@ export function diveTilt(vx, vy, hold, grounded) {
 function slide(vx, slope, hold, dt) {
   if (slope < -0.008) {
     // Steeper downhills build more speed. Holding builds it much faster.
-    const accel = (hold ? 78 : 16) * -slope
+    const accel = (hold ? 148 : 16) * -slope
     return vx + accel * dt
   }
   if (slope > 0.03) {
@@ -105,7 +105,7 @@ export function stepBird(b, hold, terrain, dt, ev) {
   }
 
   if (hold) {
-    // Steer the fall toward a ~40° descent. Horizontal speed is left alone.
+    // Steer the fall toward a ~55° descent. Horizontal speed is left alone.
     const speedX = Math.max(b.vx, 10)
     const target = -speedX * DIVE_TAN
     const floor = -speedX * DIVE_TAN_MAX
@@ -140,8 +140,8 @@ export function stepBird(b, hold, terrain, dt, ev) {
   // or the cap, depending on the slope.
   let vx = Math.max(0, oldVx)
   if ((b.airT || 0) > 0.16 && oldVy < -3 && slope < 0.12) {
-    const into = (hold || b.diving) && slope < 0.02 ? 0.42 : 0.1
-    vx += Math.min(12, -oldVy * into)
+    const into = (hold || b.diving) && slope < 0.02 ? 0.55 : 0.1
+    vx += Math.min(18, -oldVy * into)
   }
   if (hold && slope < -0.008 && vx < oldVx) vx = oldVx
 

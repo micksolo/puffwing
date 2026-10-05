@@ -5,6 +5,15 @@ export const REC_PERIOD = 0.15
 export const DAY_LENGTH = 60
 export const DAY_MAX = 75
 
+// Portrait windows have a narrow horizontal view, so the camera pulls back.
+// The cap keeps a fast, high bird from shrinking to a speck on a phone.
+export function frameDistance(camZ, aspect) {
+  const a = Math.max(Number(aspect) || 1, 0.36)
+  if (a >= 1.05) return camZ
+  const widen = Math.min(2.05, 0.9 / a)
+  return Math.min(camZ * widen, 168)
+}
+
 export class Run {
   constructor({ seed, mode, ghost }) {
     this.terrain = new Terrain(seed)
@@ -44,7 +53,7 @@ export class Run {
     this.holdPrev = false
     this.camX = this.bird.x
     this.camY = this.bird.y + 4
-    this.camZ = 26
+    this.camZ = 68
   }
 
   get dayT() {
@@ -144,7 +153,7 @@ export class Run {
       this.feverT = 14
       this.lastPerfect = this.time
       this.events.push({ type: 'perfect', combo: this.combo, x: b.x, y: b.y })
-    } else if (l.slope > 0.08 && (l.vn < -32 || Math.abs(diff) > 1.25)) {
+    } else if (l.slope > 0.08 && (l.vn < -52 || Math.abs(diff) > 1.35)) {
       b.vx *= 0.9
       b.vy *= 0.9
       this.combo = 0
@@ -206,12 +215,15 @@ export class Run {
 
   updateCamera(dt) {
     const b = this.bird
-    const tx = b.x + Math.min(Math.max(b.vx, 0), 45) * 0.22 + 5
-    const ty = b.y + 4
-    const tz = 28 + Math.min(this.speed * 0.12, 7)
-    this.camX += (tx - this.camX) * Math.min(1, 6 * dt)
+    const alt = Math.max(0, b.y - this.terrain.height(b.x) - 0.9)
+    const lead = 12 + Math.min(Math.max(b.vx, 0), 48) * 0.2
+    const tx = b.x + lead
+    // Sit a little above the bird, and look down into the valley when it climbs.
+    const ty = b.y + 2.2 - Math.min(alt, 24) * 0.32
+    const tz = 68 + Math.min(this.speed * 0.4, 26) + Math.min(alt * 1.1, 32)
+    this.camX += (tx - this.camX) * Math.min(1, 5 * dt)
     this.camY += (ty - this.camY) * Math.min(1, 3 * dt)
-    this.camZ += (tz - this.camZ) * Math.min(1, 2 * dt)
+    this.camZ += (tz - this.camZ) * Math.min(1, 2.2 * dt)
   }
 
   finish(cause) {

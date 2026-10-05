@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { Run } from '../src/game.js'
+import { Run, frameDistance } from '../src/game.js'
 import { diveTilt, stepBird, BIRD_R } from '../src/physics.js'
 import { hashString } from '../src/rng.js'
 import { Terrain } from '../src/terrain.js'
@@ -12,22 +12,24 @@ function fly(seed, policy, seconds) {
   let t = 0
   let maxAlt = 0
   let maxVy = -Infinity
+  let minVy = Infinity
   while (t < seconds && !run.over) {
     const alt = run.bird.y - run.terrain.height(run.bird.x)
     if (t > 0.4 && alt > maxAlt) maxAlt = alt
     if (run.bird.vy > maxVy) maxVy = run.bird.vy
+    if (run.bird.vy < minVy) minVy = run.bird.vy
     run.update(1 / 60, policy(run, t))
     if (samples.length < 400 && Math.round(t * 60) % 3 === 0) {
       samples.push({ t, x: run.bird.x, y: run.bird.y, vy: run.bird.vy, g: run.bird.grounded })
     }
     t += 1 / 60
   }
-  return { run, samples, maxAlt, maxVy }
+  return { run, samples, maxAlt, maxVy, minVy }
 }
 
 test('GAME_VERSION is semver and shown to the build', () => {
   assert.match(GAME_VERSION, /^\d+\.\d+\.\d+$/)
-  assert.equal(GAME_VERSION, '1.2.2')
+  assert.equal(GAME_VERSION, '1.2.3')
 })
 
 test('holding dives the bird below a glide in the first half second', () => {
@@ -37,7 +39,7 @@ test('holding dives the bird below a glide in the first half second', () => {
   const yGlide = glide.run.bird.y
   const yDive = dive.run.bird.y
   assert.ok(yDive < yGlide - 2, `dive y ${yDive.toFixed(2)} vs glide y ${yGlide.toFixed(2)}`)
-  assert.ok(dive.run.bird.vy < glide.run.bird.vy - 6, `dive vy ${dive.run.bird.vy} vs ${glide.run.bird.vy}`)
+  assert.ok(dive.minVy < glide.minVy - 12, `dive min vy ${dive.minVy.toFixed(1)} vs glide ${glide.minVy.toFixed(1)}`)
   assert.ok(dive.run.bird.vx >= 17.5, `dive kept forward speed, vx ${dive.run.bird.vx.toFixed(2)}`)
 })
 
@@ -71,7 +73,24 @@ test('an air hold is a diagonal dive that keeps forward speed', () => {
   for (let i = 0; i < 72; i++) stepBird(b, true, terrain, 1 / 120, {})
   const deg = Math.atan2(-b.vy, b.vx) * 180 / Math.PI
   assert.ok(b.vx >= 18 - 1e-6, `vx dropped to ${b.vx}`)
-  assert.ok(deg >= 30 && deg <= 48, `descent ${deg.toFixed(1)}°`)
+  assert.ok(deg >= 50 && deg <= 62, `descent ${deg.toFixed(1)}°`)
+})
+
+test('the camera pulls back, and further when the bird is high or fast', () => {
+  const run = new Run({ seed: hashString('2026-10-05'), mode: 'daily' })
+  run.update(1 / 30, false)
+  assert.ok(run.camZ > 60, `resting camera z ${run.camZ.toFixed(1)}`)
+  run.bird.vx = 42
+  run.bird.vy = 12
+  run.bird.y = run.terrain.height(run.bird.x) + 26
+  run.bird.grounded = false
+  for (let i = 0; i < 80; i++) run.updateCamera(1 / 30)
+  assert.ok(run.camZ > run.bird.vx && run.camZ > 105, `zoomed camera z ${run.camZ.toFixed(1)}`)
+  const desktop = frameDistance(run.camZ, 16 / 9)
+  const phone = frameDistance(run.camZ, 390 / 844)
+  assert.equal(desktop, run.camZ)
+  assert.ok(phone > desktop * 1.4, `portrait distance ${phone.toFixed(1)}`)
+  assert.ok(phone <= 168, `portrait distance capped, got ${phone.toFixed(1)}`)
 })
 
 test('hold then release on the first hill launches', () => {

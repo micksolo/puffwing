@@ -173,7 +173,7 @@ export class World {
 
     this.setTerrain(seed)
 
-    this.mainR = this.makeRibbon(120, 2, 0, (x) => this.terrain.height(x), 'play')
+    this.mainR = this.makeRibbon(200, 2, 0, (x) => this.terrain.height(x), 'play')
     this.bgR1 = this.makeRibbon(80, 5, -55, (x) => this.bg1.height(x * 0.6) * 2.2 + 10, 'far')
     this.bgR2 = this.makeRibbon(100, 6, -125, (x) => this.bg2.height(x * 0.3) * 3 + 22, 'farther')
   }
@@ -211,11 +211,11 @@ export class World {
         'uniform vec3 top; uniform vec3 bottom; varying vec2 vUv; void main(){ gl_FragColor = vec4(mix(bottom, top, pow(vUv.y, 0.7)), 1.0); }',
       depthWrite: false
     })
-    this.sky = new THREE.Mesh(new THREE.PlaneGeometry(600, 340), this.skyMat)
+    this.sky = new THREE.Mesh(new THREE.PlaneGeometry(1800, 1100), this.skyMat)
     this.sky.position.z = -150
     this.sky.frustumCulled = false
     this.scene.add(this.sky)
-    this.scene.fog = new THREE.Fog(0xdff4ff, 80, 240)
+    this.scene.fog = new THREE.Fog(0xdff4ff, 260, 720)
   }
 
   buildCelestials() {
@@ -450,7 +450,7 @@ export class World {
   }
 
   updateDecor(dt, camX) {
-    const want = this.terrain.decorInRange(camX - 80, camX + 140)
+    const want = this.terrain.decorInRange(camX - 140, camX + 240)
     const wantIds = new Set(want.map((w) => w.id))
     for (const w of want) {
       if (this.decor.has(w.id)) continue
@@ -475,7 +475,7 @@ export class World {
   }
 
   updateCoins(dt, camX, taken) {
-    const want = this.terrain.coinArcsInRange(camX - 80, camX + 140)
+    const want = this.terrain.coinArcsInRange(camX - 140, camX + 240)
     const wantIds = new Set(want.map((w) => w.id))
     for (const w of want) {
       if (this.coinMap.has(w.id)) continue

@@ -2,7 +2,7 @@ import * as THREE from 'three'
 import { World } from './world.js'
 import { GAME_VERSION } from './version.js'
 import { createBird, animateBird } from './bird.js'
-import { Run } from './game.js'
+import { Run, frameDistance } from './game.js'
 import * as lb from './leaderboard.js'
 import { todayKey, hashString, randomName } from './rng.js'
 import { track, startAnalytics } from './analytics.js'
@@ -16,7 +16,7 @@ const renderer = new THREE.WebGLRenderer({ canvas, antialias: true })
 renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2))
 
 const scene = new THREE.Scene()
-const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 500)
+const camera = new THREE.PerspectiveCamera(56, 1, 0.1, 1200)
 scene.add(new THREE.HemisphereLight('#dff4ff', '#9fe6c4', 0.95))
 const sunLight = new THREE.DirectionalLight('#fff2d0', 1.1)
 sunLight.position.set(20, 40, 60)
@@ -65,6 +65,7 @@ function resize() {
   const h = innerHeight
   renderer.setSize(w, h, false)
   camera.aspect = w / h
+  camera.fov = camera.aspect < 0.85 ? 74 : 56
   camera.updateProjectionMatrix()
 }
 addEventListener('resize', resize)
@@ -460,7 +461,10 @@ let lastTele = 0
 
 window.__puffwing = { state, input, world, camera, version: GAME_VERSION, birdRot: 0 }
 
-const zoomFit = () => Math.max(1, Math.min(2.6, 1.7 / camera.aspect))
+function fitBird(group, z) {
+  const read = Math.min(2.35, Math.max(1, z / 52))
+  group.scale.set(group.scale.x * read, group.scale.y * read, read)
+}
 
 renderer.setAnimationLoop(() => {
   const dt = Math.min(clock.getDelta(), 0.05)
@@ -473,6 +477,8 @@ renderer.setAnimationLoop(() => {
     bird.group.visible = true
     bird.group.position.set(run.bird.x, run.bird.y, 1.2)
     animateBird(bird, { t: el, vx: run.bird.vx, vy: run.bird.vy, grounded: run.bird.grounded, hold: input.hold })
+    const viewZ = frameDistance(run.camZ, camera.aspect)
+    fitBird(bird.group, viewZ)
     window.__puffwing.birdRot = bird.group.rotation.z
     if (run.fever) {
       feverColor.setHSL((el * 0.7) % 1, 0.85, 0.62)
@@ -483,11 +489,12 @@ renderer.setAnimationLoop(() => {
       ghostBird.group.visible = true
       ghostBird.group.position.set(gp.x, gp.y, 0.9)
       animateBird(ghostBird, { t: el * 1.1, vx: 10, vy: 0, grounded: false })
+      fitBird(ghostBird.group, viewZ)
     } else {
       ghostBird.group.visible = false
     }
-    camera.position.set(run.camX, run.camY, run.camZ * zoomFit())
-    camera.lookAt(run.camX + 4, run.camY - 2, 0)
+    camera.position.set(run.camX, run.camY, viewZ)
+    camera.lookAt(run.camX + 6, run.camY - 8, 0)
     hud(run)
     const holdind = $('holdind')
     holdind.classList.toggle('hidden', false)
@@ -514,8 +521,8 @@ renderer.setAnimationLoop(() => {
     bird.group.visible = false
     ghostBird.group.visible = false
     $('holdind').classList.add('hidden')
-    camera.position.set(menuCam, 10, 34 * zoomFit())
-    camera.lookAt(menuCam + 8, 3, 0)
+    camera.position.set(menuCam, 10, frameDistance(46, camera.aspect))
+    camera.lookAt(menuCam + 10, 2, 0)
   }
   renderer.render(scene, camera)
 })
