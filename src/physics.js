@@ -25,8 +25,8 @@ function capSpeed(b, hold) {
 export function diveTilt(vx, vy, hold, grounded) {
   const along = Math.atan2(vy, Math.max(vx, 8))
   if (hold && !grounded) {
-    const aim = Math.min(along, -0.76)
-    return Math.max(-0.85, aim)
+    const aim = Math.min(along, -0.82)
+    return Math.max(-0.9, aim)
   }
   const tuck = hold && grounded ? 0.72 : 0
   const tilt = along * (hold ? 1 : 0.92) - tuck

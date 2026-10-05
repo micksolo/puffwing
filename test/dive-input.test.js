@@ -162,7 +162,8 @@ test('real Space and the hold pad dive; a glide does not', { timeout: 45000 }, a
   assert.ok(heldDrop > glideDrop + 3, `held drop ${heldDrop.toFixed(2)} vs glide drop ${glideDrop.toFixed(2)}`)
   const heldRot = Math.min(...held.map((s) => s.rot))
   const glideRot = Math.min(...glide.map((s) => s.rot))
-  assert.ok(heldRot < glideRot - 0.4, `held rot ${heldRot.toFixed(2)} vs glide rot ${glideRot.toFixed(2)}`)
+  assert.ok(heldRot < -0.7, 'air tuck is not a diagonal dive, rot ' + heldRot.toFixed(2))
+  assert.ok(heldRot < glideRot - 0.3, `held rot ${heldRot.toFixed(2)} vs glide rot ${glideRot.toFixed(2)}`)
 
   assert.equal(await boot(), '1.2.2')
   await play(cdp)
