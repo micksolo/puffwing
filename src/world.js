@@ -353,7 +353,7 @@ export class World {
       const x = x0 + i * r.step
       const h = r.hFn(x)
       const base = i * rows * 3
-      const shoulder = rows === 3 ? h - 2.6 : -45
+      const shoulder = rows === 3 ? h - 2.6 : -240
       r.pos[base] = x
       r.pos[base + 1] = h + (rows === 3 ? 0.15 : 0)
       r.pos[base + 2] = r.z + (rows === 3 ? 1.15 : 0)
@@ -362,7 +362,7 @@ export class World {
       r.pos[base + 5] = r.z + (rows === 3 ? 0.25 : 0)
       if (rows === 3) {
         r.pos[base + 6] = x
-        r.pos[base + 7] = -45
+        r.pos[base + 7] = -240
         r.pos[base + 8] = r.z
       }
       if (r.col) {

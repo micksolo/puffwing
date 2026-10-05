@@ -462,7 +462,7 @@ let lastTele = 0
 window.__puffwing = { state, input, world, camera, version: GAME_VERSION, birdRot: 0 }
 
 function fitBird(group, z) {
-  const read = Math.min(2.35, Math.max(1, z / 52))
+  const read = Math.min(2.7, Math.max(1, z / 46))
   group.scale.set(group.scale.x * read, group.scale.y * read, read)
 }
 
