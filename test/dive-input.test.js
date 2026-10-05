@@ -176,12 +176,12 @@ test('real Space and the hold pad dive; a glide does not', { timeout: 45000 }, a
   })()`)
   assert.equal(pad.hidden, false)
   assert.ok(pad.w > 100 && pad.h > 40, 'on-screen hold area is missing')
-  const before = await cdp.evalJs('window.__puffwing.birdRot')
+  const before = await cdp.evalJs(readBird)
   await cdp.send('Input.dispatchMouseEvent', {
     type: 'mousePressed', x: pad.x, y: pad.y, button: 'left', clickCount: 1
   })
-  await sleep(200)
-  const pressing = await cdp.evalJs(readBird)
+  const pressingSamples = await sampleFor(cdp, 0.3)
+  const pressing = pressingSamples.at(-1)
   await cdp.send('Input.dispatchMouseEvent', {
     type: 'mouseReleased', x: pad.x, y: pad.y, button: 'left', clickCount: 1
   })
@@ -189,6 +189,8 @@ test('real Space and the hold pad dive; a glide does not', { timeout: 45000 }, a
   const released = await cdp.evalJs('window.__puffwing.input.hold ? 1 : 0')
   assert.equal(pressing.hold, 1)
   assert.equal(pressing.screen, 'play')
-  assert.ok(pressing.rot < before - 0.12, 'pad press did not pitch the bird down, rot ' + pressing.rot.toFixed(2))
+  const padAim = Math.atan2(pressing.vy, Math.max(pressing.vx, 1))
+  assert.ok(Math.abs(pressing.rot - padAim) < 0.4, `pad rot ${pressing.rot.toFixed(2)} vs velocity ${padAim.toFixed(2)}`)
+  assert.ok(pressing.rot < before.rot - 0.15, `pad rot ${pressing.rot.toFixed(2)} vs before ${before.rot.toFixed(2)}`)
   assert.equal(released, 0)
 })
