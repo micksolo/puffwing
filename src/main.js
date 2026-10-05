@@ -16,7 +16,7 @@ const renderer = new THREE.WebGLRenderer({ canvas, antialias: true })
 renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2))
 
 const scene = new THREE.Scene()
-const camera = new THREE.PerspectiveCamera(56, 1, 0.1, 1200)
+const camera = new THREE.PerspectiveCamera(56, 1, 0.1, 2000)
 scene.add(new THREE.HemisphereLight('#dff4ff', '#9fe6c4', 0.95))
 const sunLight = new THREE.DirectionalLight('#fff2d0', 1.1)
 sunLight.position.set(20, 40, 60)
@@ -462,7 +462,7 @@ let lastTele = 0
 window.__puffwing = { state, input, world, camera, version: GAME_VERSION, birdRot: 0 }
 
 function fitBird(group, z) {
-  const read = Math.min(2.7, Math.max(1, z / 46))
+  const read = Math.min(5.6, Math.max(1, z / 46))
   group.scale.set(group.scale.x * read, group.scale.y * read, read)
 }
 
@@ -521,7 +521,7 @@ renderer.setAnimationLoop(() => {
     bird.group.visible = false
     ghostBird.group.visible = false
     $('holdind').classList.add('hidden')
-    camera.position.set(menuCam, 10, frameDistance(46, camera.aspect))
+    camera.position.set(menuCam, 10, frameDistance(69, camera.aspect))
     camera.lookAt(menuCam + 10, 2, 0)
   }
   renderer.render(scene, camera)

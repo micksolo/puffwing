@@ -1,5 +1,5 @@
 import { Terrain } from './terrain.js'
-import { stepBird, BIRD_R } from './physics.js'
+import { stepBird, BIRD_R, MAX_SPEED } from './physics.js'
 
 export const REC_PERIOD = 0.15
 export const DAY_LENGTH = 60
@@ -11,7 +11,7 @@ export function frameDistance(camZ, aspect) {
   const a = Math.max(Number(aspect) || 1, 0.36)
   if (a >= 1.05) return camZ
   const widen = Math.min(2.05, 0.9 / a)
-  return Math.min(camZ * widen, 168)
+  return Math.min(camZ * widen, 252)
 }
 
 export class Run {
@@ -28,7 +28,7 @@ export class Run {
         break
       }
     }
-    this.bird = { x: sx, y: this.terrain.height(sx) + 7, vx: 18, vy: 0, grounded: false }
+    this.bird = { x: sx, y: this.terrain.height(sx) + 7, vx: 26, vy: 0, grounded: false }
     this.acc = 0
     this.time = 0
     this.dayLeft = DAY_LENGTH
@@ -53,7 +53,7 @@ export class Run {
     this.holdPrev = false
     this.camX = this.bird.x
     this.camY = this.bird.y + 4
-    this.camZ = 68
+    this.camZ = 102
   }
 
   get dayT() {
@@ -141,7 +141,7 @@ export class Run {
       l.slope < -0.06 && speed > 14 && Math.abs(diff) < 0.5 && (l.airT || 0) > 0.45 && this.time - this.lastPerfect > 0.75
     if (perfect) {
       const sp = Math.max(speed, 1)
-      const f = Math.min(sp + 5, 55) / sp
+      const f = Math.min(sp + 8, MAX_SPEED) / sp
       b.vx *= f
       b.vy *= f
       this.perfects++
@@ -205,7 +205,7 @@ export class Run {
       this.slowT += dt
       if (this.slowT > 1.8) {
         this.slowT = -5
-        b.vx = Math.max(b.vx, 12)
+        b.vx = Math.max(b.vx, 20)
         this.events.push({ type: 'breeze', x: b.x, y: b.y })
       }
     } else if (this.slowT > 0) {
@@ -216,11 +216,11 @@ export class Run {
   updateCamera(dt) {
     const b = this.bird
     const alt = Math.max(0, b.y - this.terrain.height(b.x) - 0.9)
-    const lead = 12 + Math.min(Math.max(b.vx, 0), 48) * 0.2
+    const lead = 18 + Math.min(Math.max(b.vx, 0), 70) * 0.28
     const tx = b.x + lead
     // Sit a little above the bird, and look down into the valley when it climbs.
     const ty = b.y + 2.2 - Math.min(alt, 24) * 0.32
-    const tz = 68 + Math.min(this.speed * 0.4, 26) + Math.min(alt * 1.1, 32)
+    const tz = 102 + Math.min(this.speed * 0.6, 39) + Math.min(alt * 1.65, 48)
     this.camX += (tx - this.camX) * Math.min(1, 5 * dt)
     this.camY += (ty - this.camY) * Math.min(1, 3 * dt)
     this.camZ += (tz - this.camZ) * Math.min(1, 2.2 * dt)

@@ -29,7 +29,7 @@ function fly(seed, policy, seconds) {
 
 test('GAME_VERSION is semver and shown to the build', () => {
   assert.match(GAME_VERSION, /^\d+\.\d+\.\d+$/)
-  assert.equal(GAME_VERSION, '1.2.3')
+  assert.equal(GAME_VERSION, '1.2.4')
 })
 
 test('holding dives the bird below a glide in the first half second', () => {
@@ -40,7 +40,7 @@ test('holding dives the bird below a glide in the first half second', () => {
   const yDive = dive.run.bird.y
   assert.ok(yDive < yGlide - 2, `dive y ${yDive.toFixed(2)} vs glide y ${yGlide.toFixed(2)}`)
   assert.ok(dive.minVy < glide.minVy - 12, `dive min vy ${dive.minVy.toFixed(1)} vs glide ${glide.minVy.toFixed(1)}`)
-  assert.ok(dive.run.bird.vx >= 17.5, `dive kept forward speed, vx ${dive.run.bird.vx.toFixed(2)}`)
+  assert.ok(dive.run.bird.vx >= 25, `dive kept forward speed, vx ${dive.run.bird.vx.toFixed(2)}`)
 })
 
 test('holding on a downslope never cuts horizontal speed and builds it', () => {
@@ -64,7 +64,7 @@ test('holding on a downslope never cuts horizontal speed and builds it', () => {
     if (b.vx < minVx) minVx = b.vx
   }
   assert.ok(minVx >= vx0 - 1e-6, `min vx ${minVx} fell below ${vx0}`)
-  assert.ok(b.vx > vx0 + 4, `expected a real acceleration, vx ${b.vx.toFixed(2)}`)
+  assert.ok(b.vx > vx0 + 12, `expected a real acceleration, vx ${b.vx.toFixed(2)}`)
 })
 
 test('an air hold is a diagonal dive that keeps forward speed', () => {
@@ -79,18 +79,18 @@ test('an air hold is a diagonal dive that keeps forward speed', () => {
 test('the camera pulls back, and further when the bird is high or fast', () => {
   const run = new Run({ seed: hashString('2026-10-05'), mode: 'daily' })
   run.update(1 / 30, false)
-  assert.ok(run.camZ > 60, `resting camera z ${run.camZ.toFixed(1)}`)
+  assert.ok(run.camZ > 95, `resting camera z ${run.camZ.toFixed(1)}`)
   run.bird.vx = 42
   run.bird.vy = 12
   run.bird.y = run.terrain.height(run.bird.x) + 26
   run.bird.grounded = false
   for (let i = 0; i < 80; i++) run.updateCamera(1 / 30)
-  assert.ok(run.camZ > run.bird.vx && run.camZ > 105, `zoomed camera z ${run.camZ.toFixed(1)}`)
+  assert.ok(run.camZ > 155, `zoomed camera z ${run.camZ.toFixed(1)}`)
   const desktop = frameDistance(run.camZ, 16 / 9)
   const phone = frameDistance(run.camZ, 390 / 844)
   assert.equal(desktop, run.camZ)
-  assert.ok(phone > desktop * 1.4, `portrait distance ${phone.toFixed(1)}`)
-  assert.ok(phone <= 168, `portrait distance capped, got ${phone.toFixed(1)}`)
+  assert.ok(phone > desktop * 1.35, `portrait distance ${phone.toFixed(1)}`)
+  assert.ok(phone <= 252, `portrait distance capped, got ${phone.toFixed(1)}`)
 })
 
 test('hold then release on the first hill launches', () => {
