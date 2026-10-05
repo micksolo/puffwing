@@ -70,7 +70,7 @@ const readBird = `(() => {
   const run = window.__puffwing.state.run
   const b = run.bird
   return {
-    y: b.y, x: b.x, vy: b.vy, time: run.time,
+    y: b.y, x: b.x, vx: b.vx, vy: b.vy, time: run.time,
     hold: window.__puffwing.input.hold ? 1 : 0,
     rot: window.__puffwing.birdRot,
     screen: window.__puffwing.state.screen
@@ -133,7 +133,7 @@ test('real Space and the hold pad dive; a glide does not', { timeout: 45000 }, a
     throw new Error('game did not boot')
   }
 
-  assert.equal(await boot(), '1.2.4')
+  assert.equal(await boot(), '1.3.0')
   await play(cdp)
   // A real player clicks Daily Flight, which leaves that button focused
   // unless we move focus. Put focus back on the button and then hold Space
@@ -149,23 +149,25 @@ test('real Space and the hold pad dive; a glide does not', { timeout: 45000 }, a
   })
   assert.ok(held.every((s) => s.screen === 'play'), 'space activated the focused button and left the run')
   assert.ok(held.filter((s) => s.hold === 1).length >= 3, 'hold did not stick while Space was down')
-  assert.ok(held.some((s) => s.rot < -0.6), 'bird never tucked, rot ' + held.map((s) => s.rot.toFixed(2)).join(','))
+  assert.ok(held.some((s) => s.rot < -0.4), 'bird never followed the dive, rot ' + held.map((s) => s.rot.toFixed(2)).join(','))
   const heldDrop = y0 - Math.min(...held.map((s) => s.y))
   assert.ok(held.at(-1).time - held[0].time > 0.25, 'game clock did not advance while holding')
-  assert.ok(heldDrop > 4, 'held drop only ' + heldDrop.toFixed(2) + ' from ' + y0.toFixed(2))
+  assert.ok(heldDrop > 3, 'held drop only ' + heldDrop.toFixed(2) + ' from ' + y0.toFixed(2))
 
-  assert.equal(await boot(), '1.2.4')
+  assert.equal(await boot(), '1.3.0')
   await play(cdp)
   const gy0 = await cdp.evalJs('window.__puffwing.state.run.bird.y')
   const glide = await sampleFor(cdp, 0.4)
   const glideDrop = gy0 - Math.min(...glide.map((s) => s.y))
-  assert.ok(heldDrop > glideDrop + 3, `held drop ${heldDrop.toFixed(2)} vs glide drop ${glideDrop.toFixed(2)}`)
+  assert.ok(heldDrop > glideDrop + 1.5, `held drop ${heldDrop.toFixed(2)} vs glide drop ${glideDrop.toFixed(2)}`)
   const heldRot = Math.min(...held.map((s) => s.rot))
   const glideRot = Math.min(...glide.map((s) => s.rot))
-  assert.ok(heldRot < -0.7, 'air tuck is not a diagonal dive, rot ' + heldRot.toFixed(2))
-  assert.ok(heldRot < glideRot - 0.3, `held rot ${heldRot.toFixed(2)} vs glide rot ${glideRot.toFixed(2)}`)
+  const nose = held.at(-1)
+  const aim = Math.atan2(nose.vy, Math.max(nose.vx, 1))
+  assert.ok(Math.abs(nose.rot - aim) < 0.35, `rotation ${nose.rot.toFixed(2)} lagged the velocity ${aim.toFixed(2)}`)
+  assert.ok(heldRot < glideRot - 0.2, `held rot ${heldRot.toFixed(2)} vs glide rot ${glideRot.toFixed(2)}`)
 
-  assert.equal(await boot(), '1.2.4')
+  assert.equal(await boot(), '1.3.0')
   await play(cdp)
   const pad = await cdp.evalJs(`(() => {
     const el = document.getElementById('divepad')
@@ -187,6 +189,6 @@ test('real Space and the hold pad dive; a glide does not', { timeout: 45000 }, a
   const released = await cdp.evalJs('window.__puffwing.input.hold ? 1 : 0')
   assert.equal(pressing.hold, 1)
   assert.equal(pressing.screen, 'play')
-  assert.ok(pressing.rot < before - 0.4, 'pad press did not tuck the bird')
+  assert.ok(pressing.rot < before - 0.12, 'pad press did not pitch the bird down, rot ' + pressing.rot.toFixed(2))
   assert.equal(released, 0)
 })

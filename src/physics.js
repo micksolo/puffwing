@@ -1,10 +1,24 @@
 export const GLIDE_G = -13
 export const BIRD_R = 0.9
 export const MAX_SPEED = 85
-// A held dive aims at about 55° and is not allowed to go near vertical.
-const DIVE_TAN = Math.tan(55 * Math.PI / 180)
-const DIVE_TAN_MAX = Math.tan(62 * Math.PI / 180)
-const DIVE_PULL = 220
+// Air hold is only a stronger gravity. It never aims the velocity.
+export const HOLD_G_MUL = 4
+// On the ground the same idea is the tangential part of gravity. The held
+// value keeps the 1.2.4 downhill pace (about 240 times the grade).
+const GROUND_G = -22
+const GROUND_HOLD_G = -240
+// A landing this close to the downhill tangent keeps its speed and is
+// snapped onto the slope. Wider than this, or into a rise, is a bump.
+export const LAND_WINDOW = 30 * Math.PI / 180
+// A release near a crest flies off on its own. This only adds a little
+// upward speed when pure tangent momentum would barely clear.
+const LAUNCH_POP = 2.5
+
+function wrapPi(d) {
+  while (d > Math.PI) d -= Math.PI * 2
+  while (d < -Math.PI) d += Math.PI * 2
+  return d
+}
 
 function capLaunch(b) {
   const room = Math.sqrt(Math.max(0, MAX_SPEED * MAX_SPEED - Math.min(b.vx, MAX_SPEED) ** 2))
@@ -25,83 +39,69 @@ function capSpeed(b, hold) {
   b.vy *= MAX_SPEED / sp
 }
 
-// Nose angle in radians. Holding tucks the beak down on the first frame,
-// before gravity has moved the bird, so the press is obvious in the air and
-// on the ground. In the air the tuck is a diagonal dive, not a vertical plunge.
-export function diveTilt(vx, vy, hold, grounded) {
-  const along = Math.atan2(vy, Math.max(vx, 8))
-  if (hold && !grounded) {
-    const aim = Math.min(along, -0.96)
-    return Math.max(-1.15, aim)
-  }
-  const tuck = hold && grounded ? 0.72 : 0
-  const tilt = along * (hold ? 1 : 0.92) - tuck
-  return Math.max(-1.15, Math.min(0.7, tilt))
+// Target nose angle. In the air it is the velocity direction. On the ground
+// it is the slope tangent. Holding does not change it.
+export function flightAngle(vx, vy, grounded, slope) {
+  if (grounded) return Math.atan(slope || 0)
+  return Math.atan2(vy, Math.max(vx, 1e-6))
 }
 
-function slide(vx, slope, hold, dt) {
-  if (slope < -0.008) {
-    // Steeper downhills build more speed. Holding builds it much faster.
-    const accel = (hold ? 240 : 22) * -slope
-    return vx + accel * dt
+// Ease toward a target angle. One step never jumps the whole way.
+export function approachAngle(current, target, dt) {
+  const d = wrapPi(target - current)
+  const k = 1 - Math.exp(-18 * Math.max(0, Math.min(dt || 0, 0.05)))
+  return current + d * k
+}
+
+function tangentSpeed(vx, slope) {
+  return Math.max(0, vx) * Math.hypot(1, slope)
+}
+
+function slideSpeed(oldVx, slope, hold, dt) {
+  const th = Math.atan(slope)
+  let s = tangentSpeed(oldVx, slope)
+  const g = hold ? GROUND_HOLD_G : GROUND_G
+  s += g * Math.sin(th) * dt
+  if (Math.abs(slope) <= 0.03) {
+    const drag = hold ? 0.001 : 0.015
+    s -= s * drag * dt
   }
-  if (slope > 0.03) {
-    const brake = (hold ? 10 : 26) * slope
-    let next = vx - brake * dt
-    if (hold) next = Math.max(next, vx - 8 * dt)
-    return Math.max(8, next)
-  }
-  const drag = hold ? 0.001 : 0.015
-  const next = vx - vx * drag * dt
-  return hold ? Math.max(next, vx) : next
+  if (hold && slope < -0.008) s = Math.max(s, tangentSpeed(oldVx, slope))
+  if (slope > 0.03) s = Math.max(s, 8 * Math.hypot(1, slope))
+  let vx = s * Math.cos(th)
+  if (hold && slope < -0.008 && vx < oldVx) vx = oldVx
+  return vx
 }
 
 export function stepBird(b, hold, terrain, dt, ev) {
   if (b.launchCd > 0) b.launchCd -= dt
-  // A dive stays charged until the player releases on a ramp. Never holding
-  // never charges, so touching an upslope is not itself a launch.
   if (hold) b.diving = true
 
   if (b.grounded) {
     const oldVx = b.vx
     const slope = terrain.slope(b.x)
-    let vx = slide(Math.max(0, oldVx), slope, hold, dt)
-    if (hold && slope < -0.008 && vx < oldVx) vx = oldVx
-    b.x += vx * dt
-    const gy = terrain.height(b.x) + BIRD_R
-    const look = Math.max(2.5, Math.min(7, vx * 0.14))
-    const ahead = terrain.slope(b.x + look)
-    const ramp = slope > 0.012 || (ahead > 0.045 && slope > -0.02)
-    const crest = ahead < slope - 0.06 && slope > -0.2 && ahead < 0.04
-    if (!hold && b.diving && (b.launchCd || 0) <= 0 && vx > 11 && (ramp || crest)) {
+    const vx = slideSpeed(Math.max(0, oldVx), slope, hold, dt)
+    const nx = b.x + vx * dt
+    const gy = terrain.height(nx) + BIRD_R
+    // Ballistic step from the tangent. When the hill bends away faster than
+    // gravity, a released bird leaves with the speed it already has.
+    const ny = b.y + vx * slope * dt + 0.5 * GLIDE_G * dt * dt
+    const lip = !hold && (b.launchCd || 0) <= 0 && vx > 11 && ny > gy + 0.0002
+    if (lip) {
       b.diving = false
-      const pop = (ramp ? 14 : 7) + Math.min(vx, 72) * 0.32
       b.grounded = false
       b.airT = 0
-      b.launchCd = 0.16
-      b.y = gy + 0.35
+      b.launchCd = 0.12
+      b.x = nx
+      b.y = Math.max(ny, gy)
       b.vx = vx
-      b.vy = vx * Math.max(slope, 0.05) + pop
+      b.vy = vx * slope + LAUNCH_POP
       ev.launch = { x: b.x, y: b.y, slope, vt: vx }
       capLaunch(b)
       return
     }
-    // A crest can drop the bird off the surface. Holding keeps it planted
-    // on the way down so the tuck cannot skip and then stop.
-    const fellAway = gy < b.y + vx * slope * dt - 0.45
-    if (fellAway && !hold) {
-      b.diving = false
-      b.grounded = false
-      b.y = b.y + vx * slope * dt
-      b.vx = vx
-      b.vy = vx * slope
-      b.airT = 0
-      capSpeed(b, false)
-      return
-    }
-    // Releasing on the downhill spends the dive. Releasing as the ground
-    // turns up keeps it long enough for the launch on the next frames.
     if (!hold && slope < -0.01) b.diving = false
+    b.x = nx
     b.y = gy
     b.vx = vx
     b.vy = vx * slope
@@ -110,17 +110,8 @@ export function stepBird(b, hold, terrain, dt, ev) {
     return
   }
 
-  if (hold) {
-    // Steer the fall toward a ~55° descent. Horizontal speed is left alone.
-    const speedX = Math.max(b.vx, 10)
-    const target = -speedX * DIVE_TAN
-    const floor = -speedX * DIVE_TAN_MAX
-    if (b.vy > target) b.vy -= DIVE_PULL * dt
-    if (b.vy < floor) b.vy = floor
-  } else {
-    b.vy += GLIDE_G * dt
-    b.vx -= b.vx * 0.003 * dt
-  }
+  b.vy += GLIDE_G * (hold ? HOLD_G_MUL : 1) * dt
+  if (!hold) b.vx -= b.vx * 0.003 * dt
 
   b.x += b.vx * dt
   b.y += b.vy * dt
@@ -136,38 +127,32 @@ export function stepBird(b, hold, terrain, dt, ev) {
   const oldVx = b.vx
   const oldVy = b.vy
   const th = Math.atan(slope)
-  const vn = -oldVx * Math.sin(th) + oldVy * Math.cos(th)
-  if (vn < -0.5) {
-    ev.landing = { slope, vt: oldVx, vn, vx: oldVx, vy: oldVy, airT: b.airT || 0 }
+  const c = Math.cos(th)
+  const sn = Math.sin(th)
+  const diff = wrapPi(Math.atan2(oldVy, Math.max(oldVx, 1e-6)) - th)
+  const incoming = Math.hypot(oldVx, oldVy)
+  const rise = slope > 0.05
+  const smooth = !rise && slope < -0.02 && Math.abs(diff) <= LAND_WINDOW
+  const vn = -oldVx * sn + oldVy * c
+  let s
+  if (smooth) {
+    s = incoming * 0.98
+  } else if (rise || Math.abs(diff) > LAND_WINDOW) {
+    const along = oldVx * c + oldVy * sn
+    s = Math.max(0, along) * (rise ? 0.62 : 0.72)
+  } else {
+    s = incoming * 0.96
   }
-
-  // One landing. Keep the forward speed, and fold a single chunk of the
-  // fall into it. This used to run every skim and multiply until vx hit 0
-  // or the cap, depending on the slope.
-  let vx = Math.max(0, oldVx)
-  if ((b.airT || 0) > 0.16 && oldVy < -3 && slope < 0.12) {
-    const into = (hold || b.diving) && slope < 0.02 ? 0.55 : 0.12
-    vx += Math.min(26, -oldVy * into)
-  }
+  let vx = s * c
   if (hold && slope < -0.008 && vx < oldVx) vx = oldVx
-
-  const look = Math.max(2.5, Math.min(7, vx * 0.14))
-  const ahead = terrain.slope(b.x + look)
-  const ramp = slope > 0.012 || (ahead > 0.045 && slope > -0.02)
-  const crest = ahead < slope - 0.06 && slope > -0.2 && ahead < 0.04
-  if (!hold && b.diving && (b.launchCd || 0) <= 0 && vx > 11 && (ramp || crest) && slope >= -0.08) {
-    b.diving = false
-    const pop = (ramp ? 14 : 7) + Math.min(vx, 72) * 0.32
-    b.grounded = false
-    b.airT = 0
-    b.launchCd = 0.16
-    b.y = gy + 0.35
-    b.vx = vx
-    b.vy = vx * Math.max(slope, 0.05) + pop
-    ev.launch = { x: b.x, y: b.y, slope, vt: vx }
-    capLaunch(b)
-    return
+  if (vn < -0.5) {
+    ev.landing = {
+      slope, vt: oldVx, vn, vx: oldVx, vy: oldVy,
+      airT: b.airT || 0, diff, smooth, incoming
+    }
   }
+
+  if (!smooth && (rise || Math.abs(diff) > LAND_WINDOW)) b.diving = false
 
   b.y = gy
   b.grounded = true

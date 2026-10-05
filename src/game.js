@@ -1,5 +1,5 @@
 import { Terrain } from './terrain.js'
-import { stepBird, BIRD_R, MAX_SPEED } from './physics.js'
+import { stepBird, flightAngle, BIRD_R, MAX_SPEED } from './physics.js'
 
 export const REC_PERIOD = 0.15
 export const DAY_LENGTH = 60
@@ -28,7 +28,9 @@ export class Run {
         break
       }
     }
-    this.bird = { x: sx, y: this.terrain.height(sx) + 7, vx: 26, vy: 0, grounded: false }
+    // Close enough to the first downhill that a held dive meets it, and high
+    // enough that the curve is visible before the hill catches the bird.
+    this.bird = { x: sx, y: this.terrain.height(sx) + 3.4, vx: 26, vy: 0, grounded: false }
     this.acc = 0
     this.time = 0
     this.dayLeft = DAY_LENGTH
@@ -54,6 +56,48 @@ export class Run {
     this.camX = this.bird.x
     this.camY = this.bird.y + 4
     this.camZ = 102
+    this.alpha = 0
+    this.prev = this.capture()
+    this.lastLanding = null
+  }
+
+  capture() {
+    const b = this.bird
+    return {
+      x: b.x,
+      y: b.y,
+      vx: b.vx,
+      vy: b.vy,
+      grounded: !!b.grounded,
+      angle: flightAngle(b.vx, b.vy, !!b.grounded, this.terrain.slope(b.x)),
+      camX: this.camX,
+      camY: this.camY,
+      camZ: this.camZ
+    }
+  }
+
+  pose() {
+    const a = Math.max(0, Math.min(1, this.alpha || 0))
+    const p = this.prev
+    const b = this.bird
+    const ang = flightAngle(b.vx, b.vy, !!b.grounded, this.terrain.slope(b.x))
+    let d = ang - p.angle
+    if (d > Math.PI) d -= Math.PI * 2
+    if (d < -Math.PI) d += Math.PI * 2
+    const x = p.x + (b.x - p.x) * a
+    return {
+      x,
+      y: p.y + (b.y - p.y) * a,
+      vx: p.vx + (b.vx - p.vx) * a,
+      vy: p.vy + (b.vy - p.vy) * a,
+      grounded: !!b.grounded,
+      angle: p.angle + d * a,
+      slope: this.terrain.slope(x),
+      camX: p.camX + (this.camX - p.camX) * a,
+      camY: p.camY + (this.camY - p.camY) * a,
+      camZ: p.camZ + (this.camZ - p.camZ) * a,
+      alpha: a
+    }
   }
 
   get dayT() {
@@ -84,10 +128,12 @@ export class Run {
     const h = 1 / 120
     let guard = 0
     while (this.acc >= h && guard++ < 12 && !this.over) {
+      this.prev = this.capture()
       this.step(h, hold)
       this.acc -= h
     }
-    if (this.acc > h) this.acc = 0
+    if (this.acc < 0) this.acc = 0
+    this.alpha = this.acc / h
   }
 
   step(dt, hold) {
@@ -99,7 +145,10 @@ export class Run {
       this.launches++
       this.events.push({ type: 'launch', x: b.x, y: b.y })
     }
-    if (ev.landing) this.handleLanding(ev.landing)
+    if (ev.landing) {
+      this.lastLanding = ev.landing
+      this.handleLanding(ev.landing)
+    }
     this.collectCoins()
     this.checkStuck(dt)
     this.time += dt
@@ -153,9 +202,7 @@ export class Run {
       this.feverT = 14
       this.lastPerfect = this.time
       this.events.push({ type: 'perfect', combo: this.combo, x: b.x, y: b.y })
-    } else if (l.slope > 0.08 && (l.vn < -52 || Math.abs(diff) > 1.35)) {
-      b.vx *= 0.9
-      b.vy *= 0.9
+    } else if (!l.smooth && (l.slope > 0.05 || Math.abs(l.diff) > 0.52)) {
       this.combo = 0
       if (this.fever) {
         this.fever = false

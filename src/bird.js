@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import { diveTilt } from './physics.js'
+import { approachAngle, flightAngle } from './physics.js'
 
 const sphereGeo = new THREE.SphereGeometry(1, 20, 14)
 const coneGeo = new THREE.ConeGeometry(0.32, 0.7, 10)
@@ -90,8 +90,11 @@ export function createBird(opts = {}) {
   return { group, leftW, rightW, bodyMat }
 }
 
-export function animateBird(b, { t, vx, vy, grounded, hold }) {
-  b.group.rotation.z = diveTilt(vx, vy, !!hold, !!grounded)
+export function animateBird(b, { t, dt, vx, vy, grounded, slope, angle, hold }) {
+  const target = Number.isFinite(angle) ? angle : flightAngle(vx, vy, !!grounded, slope || 0)
+  if (!Number.isFinite(b.rot)) b.rot = target
+  else b.rot = approachAngle(b.rot, target, dt == null ? 1 / 60 : dt)
+  b.group.rotation.z = b.rot
   const diving = !!hold
   b.group.scale.set(diving ? 1.14 : 1, diving ? 0.78 : 1, 1)
   if (b.bodyMat && !b.bodyMat.transparent) {

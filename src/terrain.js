@@ -1,42 +1,50 @@
 import { hash01 } from './rng.js'
 
-function vnoise(x, period, salt, seed) {
-  const u = x / period
-  const i = Math.floor(u)
-  const f = u - i
-  const a = hash01(seed, i, salt)
-  const b = hash01(seed, i + 1, salt)
-  const s = f * f * (3 - 2 * f)
-  return (a + (b - a) * s) * 2 - 1
-}
+// Cosine segments between hill keys. Slope is zero at every key, so peaks
+// and valleys meet, and the slope never jumps (C1).
+export const HILL_SPAN = 64
 
-// 0 on the opening stretch, then a smooth ramp into the full hill set.
 function difficulty(x) {
   const t = Math.max(0, Math.min(1, (x - 220) / 500))
   return t * t * (3 - 2 * t)
+}
+
+function ampAt(x) {
+  // The opening grade stays under 0.2. Later hills pass 0.35.
+  return 3.15 + difficulty(x) * 9.4
 }
 
 export class Terrain {
   constructor(seed) {
     this.seed = seed >>> 0
   }
+  keyY(i) {
+    const n = i | 0
+    // The same gentle opener on every seed: a downhill, then a rise.
+    if (n <= 0) return 3.3
+    if (n === 1) return -3.5
+    if (n === 2) return 2.6
+    const amp = ampAt(n * HILL_SPAN)
+    return (hash01(this.seed, n, 11) * 2 - 1) * amp
+  }
   height(x) {
-    const e = difficulty(Math.max(0, x))
-    // Long rollers on every seed: a downhill is tens of metres, the grade
-    // stays gentle, and each day only wobbles that shape a little.
     const xx = Math.max(0, x)
-    const gentle =
-      Math.sin(xx * 0.04) * 3.15 +
-      Math.sin(xx * 0.066 + 0.9) * 0.72 +
-      vnoise(x, 96, 11, this.seed) * 0.28
-    const wild =
-      vnoise(x, 150, 11, this.seed) * 11.5 +
-      vnoise(x, 44, 23, this.seed) * 8 +
-      vnoise(x, 12, 37, this.seed) * 2.6
-    return gentle * (1 - e) + wild * e - 4
+    const u = xx / HILL_SPAN
+    const i = Math.floor(u)
+    const t = u - i
+    const y0 = this.keyY(i)
+    const y1 = this.keyY(i + 1)
+    const s = (1 - Math.cos(Math.PI * t)) / 2
+    return y0 + (y1 - y0) * s
   }
   slope(x) {
-    return this.height(x + 0.5) - this.height(x - 0.5)
+    const xx = Math.max(0, x)
+    const u = xx / HILL_SPAN
+    const i = Math.floor(u)
+    const t = u - i
+    const y0 = this.keyY(i)
+    const y1 = this.keyY(i + 1)
+    return (y1 - y0) * (Math.PI / (2 * HILL_SPAN)) * Math.sin(Math.PI * t)
   }
   coinArcsInRange(x0, x1) {
     const res = []

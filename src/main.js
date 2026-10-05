@@ -473,28 +473,32 @@ renderer.setAnimationLoop(() => {
     const run = state.run
     run.update(dt, input.hold)
     processEvents(run)
-    world.update(dt, run.camX, run.camY, run.dayT, { bird: run.bird, taken: run.taken })
+    const pose = run.pose()
+    world.update(dt, pose.camX, pose.camY, run.dayT, { bird: run.bird, taken: run.taken })
     bird.group.visible = true
-    bird.group.position.set(run.bird.x, run.bird.y, 1.2)
-    animateBird(bird, { t: el, vx: run.bird.vx, vy: run.bird.vy, grounded: run.bird.grounded, hold: input.hold })
-    const viewZ = frameDistance(run.camZ, camera.aspect)
+    bird.group.position.set(pose.x, pose.y, 1.2)
+    animateBird(bird, {
+      t: el, dt, vx: pose.vx, vy: pose.vy,
+      grounded: pose.grounded, slope: pose.slope, angle: pose.angle, hold: input.hold
+    })
+    const viewZ = frameDistance(pose.camZ, camera.aspect)
     fitBird(bird.group, viewZ)
     window.__puffwing.birdRot = bird.group.rotation.z
     if (run.fever) {
       feverColor.setHSL((el * 0.7) % 1, 0.85, 0.62)
-      world.emit(run.bird.x - 1, run.bird.y - 0.2, { count: 2, color: feverColor, spread: 1.6, up: 0.5, ttl: 0.9, grav: false })
+      world.emit(pose.x - 1, pose.y - 0.2, { count: 2, color: feverColor, spread: 1.6, up: 0.5, ttl: 0.9, grav: false })
     }
     const gp = run.ghostPos()
     if (gp && !gp.done) {
       ghostBird.group.visible = true
       ghostBird.group.position.set(gp.x, gp.y, 0.9)
-      animateBird(ghostBird, { t: el * 1.1, vx: 10, vy: 0, grounded: false })
+      animateBird(ghostBird, { t: el * 1.1, dt, vx: 10, vy: 0, grounded: false, slope: 0 })
       fitBird(ghostBird.group, viewZ)
     } else {
       ghostBird.group.visible = false
     }
-    camera.position.set(run.camX, run.camY, viewZ)
-    camera.lookAt(run.camX + 6, run.camY - 8, 0)
+    camera.position.set(pose.camX, pose.camY, viewZ)
+    camera.lookAt(pose.camX + 6, pose.camY - 8, 0)
     hud(run)
     const holdind = $('holdind')
     holdind.classList.toggle('hidden', false)
