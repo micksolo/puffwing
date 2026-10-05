@@ -29,7 +29,7 @@ function fly(seed, policy, seconds) {
 
 test('GAME_VERSION is semver and shown to the build', () => {
   assert.match(GAME_VERSION, /^\d+\.\d+\.\d+$/)
-  assert.equal(GAME_VERSION, '1.3.0')
+  assert.equal(GAME_VERSION, '1.3.1')
 })
 
 test('holding dives the bird below a glide in the first half second', () => {
@@ -90,10 +90,12 @@ test('the camera pulls back, and further when the bird is high or fast', () => {
   for (let i = 0; i < 80; i++) run.updateCamera(1 / 30)
   assert.ok(run.camZ > 155, `zoomed camera z ${run.camZ.toFixed(1)}`)
   const desktop = frameDistance(run.camZ, 16 / 9)
-  const phone = frameDistance(run.camZ, 390 / 844)
+  const phonePortrait = frameDistance(run.camZ, 390 / 844)
+  const phoneLandscape = frameDistance(run.camZ, 844 / 390)
   assert.equal(desktop, run.camZ)
-  assert.ok(phone > desktop * 1.35, `portrait distance ${phone.toFixed(1)}`)
-  assert.ok(phone <= 252, `portrait distance capped, got ${phone.toFixed(1)}`)
+  assert.equal(phoneLandscape, desktop, 'a landscape phone uses the landscape camera')
+  assert.ok(phonePortrait > desktop * 1.35, `portrait distance ${phonePortrait.toFixed(1)}`)
+  assert.ok(phonePortrait <= 252, `portrait distance capped, got ${phonePortrait.toFixed(1)}`)
 })
 
 test('hold then release on the first hill launches', () => {

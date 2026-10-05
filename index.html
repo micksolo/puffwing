@@ -2,7 +2,9 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
   <title>Puffwing — daily hill gliding</title>
   <meta name="description" content="Surf the rolling hills, outrun the sunset, and race today's ghost in Puffwing — a cozy daily flight game." />
   <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20100%20100'%3E%3Ccircle%20cx='50'%20cy='55'%20r='34'%20fill='%238fd0ff'/%3E%3Ccircle%20cx='42'%20cy='48'%20r='6'%20fill='%23fff'/%3E%3Ccircle%20cx='44'%20cy='48'%20r='3'%20fill='%23222'/%3E%3Cpath%20d='M84%2055%20L64%2064%20L64%2046%20Z'%20fill='%23ffab4d'/%3E%3C/svg%3E" />
@@ -64,7 +66,14 @@
       </div>
       <p class="howto">Hold <b>SPACE</b>, the <b>HOLD</b> button, or the screen to dive · release on an uphill to launch · land on a downhill for a <b>PERFECT</b></p>
       <p id="ver" class="ver"></p>
-      <p id="portraithint">↻ Rotate your phone for the best flight</p>
+    </div>
+  </div>
+
+  <div id="rotateoverlay" class="hidden" role="dialog" aria-modal="true" aria-label="Rotate your phone">
+    <div class="rotatecard">
+      <div class="rotatephone" aria-hidden="true"></div>
+      <h2>Rotate your phone</h2>
+      <p>Puffwing plays in landscape.</p>
     </div>
   </div>
 

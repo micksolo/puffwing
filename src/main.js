@@ -7,6 +7,7 @@ import * as lb from './leaderboard.js'
 import { todayKey, hashString, randomName } from './rng.js'
 import { track, startAnalytics } from './analytics.js'
 import { initAds, gateNextFlight } from './ads.js'
+import { lockLandscape, readOrient, shouldBlockForRotate } from './orient.js'
 
 const $ = (s) => document.getElementById(s)
 
@@ -73,6 +74,28 @@ resize()
 
 const input = { hold: false }
 const divePad = $('divepad')
+let rotateBlocked = false
+let pendingMode = null
+
+function syncRotate() {
+  rotateBlocked = shouldBlockForRotate(readOrient())
+  $('rotateoverlay').classList.toggle('hidden', !rotateBlocked)
+  window.__puffwing.rotateBlocked = rotateBlocked
+  if (rotateBlocked) {
+    input.hold = false
+    input.keys = false
+    return
+  }
+  if (pendingMode && state.screen !== 'play') {
+    const mode = pendingMode
+    pendingMode = null
+    startRun(mode)
+  }
+}
+
+function requestLandscape() {
+  lockLandscape()
+}
 
 function typingTarget(el) {
   if (!el || !el.tagName) return false
@@ -87,7 +110,7 @@ function grabFocus() {
 }
 
 function setHold(next) {
-  if (state.screen !== 'play') {
+  if (rotateBlocked || state.screen !== 'play') {
     input.hold = false
     return
   }
@@ -111,6 +134,7 @@ addEventListener('pointercancel', () => { if (!input.keys) input.hold = false })
 divePad.addEventListener('pointerdown', (e) => {
   e.preventDefault()
   e.stopPropagation()
+  requestLandscape()
   try { divePad.setPointerCapture(e.pointerId) } catch {}
   setHold(true)
 })
@@ -131,6 +155,7 @@ addEventListener('keydown', (e) => {
   if (state.screen !== 'play') return
   e.preventDefault()
   e.stopPropagation()
+  if (rotateBlocked) return
   input.keys = true
   setHold(true)
 }, true)
@@ -145,6 +170,15 @@ addEventListener('keyup', (e) => {
 }, true)
 addEventListener('blur', () => { input.hold = false; input.keys = false })
 addEventListener('contextmenu', (e) => e.preventDefault())
+
+function swallowGesture(e) {
+  if (e.target && e.target.closest && e.target.closest('#name, .board')) return
+  e.preventDefault()
+}
+addEventListener('touchmove', swallowGesture, { passive: false })
+addEventListener('gesturestart', swallowGesture, { passive: false })
+addEventListener('gesturechange', swallowGesture, { passive: false })
+canvas.addEventListener('dblclick', (e) => e.preventDefault())
 
 const audio = { ctx: null, muted: localStorage.getItem('puffwing.mute') === '1' }
 function actx() {
@@ -437,13 +471,25 @@ async function endRun() {
   sEnd()
 }
 
-$('playdaily').addEventListener('click', () => startRun('daily'))
-$('playfree').addEventListener('click', () => startRun('free'))
+function playOrWait(mode) {
+  requestLandscape()
+  if (shouldBlockForRotate(readOrient())) {
+    pendingMode = mode
+    syncRotate()
+    return
+  }
+  pendingMode = null
+  startRun(mode)
+}
+$('playdaily').addEventListener('click', () => playOrWait('daily'))
+$('playfree').addEventListener('click', () => playOrWait('free'))
 $('retry').addEventListener('click', () => {
   const mode = state.run && state.run.mode === 'free' ? 'free' : 'daily'
-  gateNextFlight(() => state.screen === 'play', () => startRun(mode))
+  requestLandscape()
+  gateNextFlight(() => state.screen === 'play', () => playOrWait(mode))
 })
 $('menu').addEventListener('click', () => {
+  pendingMode = null
   state.screen = 'start'
   state.run = null
   input.hold = false
@@ -459,7 +505,12 @@ const clock = new THREE.Clock()
 let menuCam = 0
 let lastTele = 0
 
-window.__puffwing = { state, input, world, camera, version: GAME_VERSION, birdRot: 0 }
+window.__puffwing = { state, input, world, camera, version: GAME_VERSION, birdRot: 0, rotateBlocked: false }
+syncRotate()
+addEventListener('resize', syncRotate)
+addEventListener('orientationchange', syncRotate)
+try { screen.orientation.addEventListener('change', syncRotate) } catch {}
+try { matchMedia('(orientation: portrait)').addEventListener('change', syncRotate) } catch {}
 
 function fitBird(group, z) {
   const read = Math.min(5.6, Math.max(1, z / 46))
@@ -469,9 +520,10 @@ function fitBird(group, z) {
 renderer.setAnimationLoop(() => {
   const dt = Math.min(clock.getDelta(), 0.05)
   const el = clock.elapsedTime
+  syncRotate()
   if (state.screen === 'play' && state.run) {
     const run = state.run
-    run.update(dt, input.hold)
+    if (!rotateBlocked) run.update(dt, input.hold)
     processEvents(run)
     const pose = run.pose()
     world.update(dt, pose.camX, pose.camY, run.dayT, { bird: run.bird, taken: run.taken })

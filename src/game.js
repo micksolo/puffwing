@@ -5,8 +5,9 @@ export const REC_PERIOD = 0.15
 export const DAY_LENGTH = 60
 export const DAY_MAX = 75
 
-// Portrait windows have a narrow horizontal view, so the camera pulls back.
-// The cap keeps a fast, high bird from shrinking to a speck on a phone.
+// Landscape play, including a phone on its side (about 844×390), uses the
+// desktop camera distance. A portrait frame is not how phones are played;
+// the extra pull-back below is only for a genuinely tall window.
 export function frameDistance(camZ, aspect) {
   const a = Math.max(Number(aspect) || 1, 0.36)
   if (a >= 1.05) return camZ
