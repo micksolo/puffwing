@@ -1,6 +1,12 @@
+# Static site, same deploy shape as Sonar Snake.
+# The repo root is the site. There is no build command.
+# Functions are picked up from netlify/functions.
 [build]
-  command = "npm run build"
-  publish = "dist"
+  publish = "."
 
-[build.environment]
-  NODE_VERSION = "20"
+[dev]
+  framework = "#static"
+  publish = "."
+
+[functions]
+  directory = "netlify/functions"

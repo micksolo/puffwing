@@ -5,6 +5,8 @@ import { createBird, animateBird } from './bird.js'
 import { Run } from './game.js'
 import * as lb from './leaderboard.js'
 import { todayKey, hashString, randomName } from './rng.js'
+import { track, startAnalytics } from './analytics.js'
+import { initAds, gateNextFlight } from './ads.js'
 
 const $ = (s) => document.getElementById(s)
 
@@ -28,7 +30,27 @@ const state = {
   run: null,
   boardRows: [],
   boardSource: 'local',
-  ghostOn: localStorage.getItem('puffwing.ghost') !== '0'
+  ghostOn: localStorage.getItem('puffwing.ghost') !== '0',
+  milestones: {},
+  runs: 0
+}
+let lastRunEndT = null
+
+startAnalytics(() => {
+  const run = state.run
+  return {
+    location: state.screen,
+    score: run ? run.score : 0,
+    distance: run ? run.distance : 0,
+    runs: state.runs
+  }
+})
+initAds()
+
+function milestone(step) {
+  if (state.milestones[step]) return
+  state.milestones[step] = true
+  track('milestone', { step })
 }
 
 const world = new World(scene, seedToday)
@@ -180,6 +202,7 @@ muteBtn.addEventListener('click', () => {
   audio.muted = !audio.muted
   localStorage.setItem('puffwing.mute', audio.muted ? '1' : '0')
   applyMuteIcon()
+  track('mute', { muted: audio.muted })
   if (!audio.muted) tone(880, 880, 0.08, 'triangle', 0.05)
 })
 applyMuteIcon()
@@ -226,6 +249,7 @@ const feverColor = new THREE.Color()
 function processEvents(run) {
   for (const e of run.drainEvents()) {
     if (e.type === 'perfect') {
+      milestone('perfect')
       pop(e.x, e.y, 'PERFECT' + (e.combo > 1 ? ' ×' + e.combo : ''))
       world.emit(e.x, e.y, { count: 12, color: '#ffd1e0', spread: 6, up: 4 })
       sPerfect(e.combo)
@@ -237,14 +261,17 @@ function processEvents(run) {
       world.emit(e.x, e.y - 0.5, { count: 6, color: '#cbb59a', spread: 5, up: 2, ttl: 0.6 })
       sBump()
     } else if (e.type === 'fever') {
+      milestone('fever')
       popCenter('FEVER!', 'pop-fever')
       sFever()
     } else if (e.type === 'feverEnd') {
       $('fevertag').classList.add('hidden')
     } else if (e.type === 'night') {
+      milestone('night')
       popCenter('The sun has set…', 'pop-night')
       sNight()
     } else if (e.type === 'launch') {
+      milestone('launch')
       pop(e.x, e.y + 1.4, 'SOAR', 'pop-ghost')
     } else if (e.type === 'breeze') {
       pop(e.x, e.y + 2.5, 'a friendly breeze~', 'pop-ghost')
@@ -295,6 +322,14 @@ function startRun(mode) {
     ghost = { replay: state.boardRows[0].replay }
   }
   state.run = new Run({ seed, mode, ghost })
+  state.milestones = {}
+  state.runs++
+  track('run_start', {
+    run: state.runs,
+    mode,
+    gapMs: lastRunEndT ? Date.now() - lastRunEndT : null,
+    ghost: !!ghost
+  })
   world.setTerrain(seed)
   input.hold = false
   $('start').classList.add('hidden')
@@ -333,7 +368,7 @@ function renderBoard(el, rows, source) {
   })
 }
 
-async function loadBoard() {
+async function loadBoard(src) {
   const { source, rows } = await lb.fetchDaily(today)
   state.boardRows = rows
   state.boardSource = source
@@ -342,13 +377,27 @@ async function loadBoard() {
   $('ghostname').textContent = rows[0]
     ? "today's #1: " + rows[0].name + ' · ' + Number(rows[0].score).toLocaleString()
     : 'no ghost yet — set the first flight'
+  track('lb_open', { src: src || 'menu' })
 }
-loadBoard()
+loadBoard('boot')
 
 async function endRun() {
   state.screen = 'over'
   input.hold = false
   const run = state.run
+  lastRunEndT = Date.now()
+  track('run_end', {
+    cause: run.endCause || 'beach',
+    score: run.score,
+    distance: run.distance,
+    seconds: Math.round(run.time * 10) / 10,
+    airtime: Math.round(run.airtime * 10) / 10,
+    dives: run.dives,
+    perfects: run.perfects,
+    coins: run.coins,
+    launches: run.launches,
+    mode: run.mode
+  })
   $('hud').classList.add('hidden')
   $('fevertag').classList.add('hidden')
   $('hint').classList.add('hidden')
@@ -375,11 +424,13 @@ async function endRun() {
       res === 'global' ? 'Score submitted to the global leaderboard!'
       : res === 'local' ? 'Saved locally (offline mode)'
       : 'Could not reach the leaderboard — saved locally'
-    await loadBoard()
+    track('lb_submit', { score: run.score, source: res, qualified: res === 'global' || res === 'local' })
+    await loadBoard('gameover')
     renderBoard($('board2'), state.boardRows, state.boardSource)
   } else {
     status.textContent = 'Practice flight — not submitted'
     renderBoard($('board2'), state.boardRows, state.boardSource)
+    track('lb_open', { src: 'gameover' })
   }
   $('over').classList.remove('hidden')
   sEnd()
@@ -387,7 +438,10 @@ async function endRun() {
 
 $('playdaily').addEventListener('click', () => startRun('daily'))
 $('playfree').addEventListener('click', () => startRun('free'))
-$('retry').addEventListener('click', () => startRun(state.run && state.run.mode === 'free' ? 'free' : 'daily'))
+$('retry').addEventListener('click', () => {
+  const mode = state.run && state.run.mode === 'free' ? 'free' : 'daily'
+  gateNextFlight(() => state.screen === 'play', () => startRun(mode))
+})
 $('menu').addEventListener('click', () => {
   state.screen = 'start'
   state.run = null
@@ -396,7 +450,7 @@ $('menu').addEventListener('click', () => {
   $('hud').classList.add('hidden')
   $('divepad').classList.add('hidden')
   $('start').classList.remove('hidden')
-  loadBoard()
+  loadBoard('menu')
 })
 $('ver').textContent = 'v' + GAME_VERSION
 
@@ -452,6 +506,7 @@ renderer.setAnimationLoop(() => {
       clearTimeout(hintTimer)
       hintTimer = setTimeout(() => h.classList.add('hidden'), 4200)
     }
+    if (run.dives > 0) milestone('dive')
     if (run.over && state.screen === 'play') endRun()
   } else {
     menuCam += dt * 3

@@ -1,13 +1,40 @@
 import { createClient } from '@supabase/supabase-js'
 
-const env = import.meta.env || {}
-const url = env.VITE_SUPABASE_URL
-const key = env.VITE_SUPABASE_ANON_KEY
-const client = url && key ? createClient(url, key) : null
+let client = null
+let ready = null
 
-export const online = !!client
+function envPair() {
+  const env = import.meta.env || {}
+  return [env.VITE_SUPABASE_URL, env.VITE_SUPABASE_ANON_KEY]
+}
+
+function setClient(url, key) {
+  client = url && key ? createClient(url, key) : null
+  return client
+}
+
+const [bootUrl, bootKey] = envPair()
+if (bootUrl && bootKey) setClient(bootUrl, bootKey)
+
+export async function ensureClient() {
+  if (client) return client
+  if (!ready) {
+    ready = (async () => {
+      try {
+        const r = await fetch('/api/supabase-config', { cache: 'no-store' })
+        if (r.ok) {
+          const j = await r.json()
+          if (j && j.enabled && j.url && j.anonKey) setClient(j.url, j.anonKey)
+        }
+      } catch {}
+      return client
+    })()
+  }
+  return ready
+}
 
 export async function fetchDaily(day) {
+  await ensureClient()
   if (client) {
     const { data, error } = await client
       .from('daily_scores')
@@ -26,6 +53,7 @@ export async function fetchDaily(day) {
 }
 
 export async function submitScore({ day, name, score, distance, replay }) {
+  await ensureClient()
   if (client) {
     const { error } = await client
       .from('daily_scores')
