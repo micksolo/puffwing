@@ -10,19 +10,16 @@ export class Run {
     this.terrain = new Terrain(seed)
     this.mode = mode
     this.ghost = ghost || null
-    let sx = 2
-    let best = -1
-    for (let x = 0; x <= 800; x += 5) {
-      if (this.terrain.slope(x) >= 0) continue
-      if (this.terrain.slope(x + 10) >= 0) continue
-      let s = 0
-      for (let k = 0; k <= 60; k += 5) s += Math.max(0, -this.terrain.slope(x + k))
-      if (s > best) {
-        best = s
+    // Start on the gentle opening, on the first real downhill, a little above
+    // the ground so the diagonal dive is visible before the hill catches it.
+    let sx = 10
+    for (let x = 4; x <= 150; x += 2) {
+      if (this.terrain.slope(x) < -0.05 && this.terrain.slope(x + 18) < -0.04) {
         sx = x
+        break
       }
     }
-    this.bird = { x: sx, y: this.terrain.height(sx) + 12, vx: 18, vy: 0, grounded: false }
+    this.bird = { x: sx, y: this.terrain.height(sx) + 7, vx: 18, vy: 0, grounded: false }
     this.acc = 0
     this.time = 0
     this.dayLeft = DAY_LENGTH
@@ -147,7 +144,7 @@ export class Run {
       this.feverT = 14
       this.lastPerfect = this.time
       this.events.push({ type: 'perfect', combo: this.combo, x: b.x, y: b.y })
-    } else if (l.vn < -15 || Math.abs(diff) > 1.15) {
+    } else if (l.slope > 0.08 && (l.vn < -32 || Math.abs(diff) > 1.25)) {
       b.vx *= 0.9
       b.vy *= 0.9
       this.combo = 0

@@ -10,17 +10,30 @@ function vnoise(x, period, salt, seed) {
   return (a + (b - a) * s) * 2 - 1
 }
 
+// 0 on the opening stretch, then a smooth ramp into the full hill set.
+function difficulty(x) {
+  const t = Math.max(0, Math.min(1, (x - 220) / 500))
+  return t * t * (3 - 2 * t)
+}
+
 export class Terrain {
   constructor(seed) {
     this.seed = seed >>> 0
   }
   height(x) {
-    return (
+    const e = difficulty(Math.max(0, x))
+    // Long rollers on every seed: a downhill is tens of metres, the grade
+    // stays gentle, and each day only wobbles that shape a little.
+    const xx = Math.max(0, x)
+    const gentle =
+      Math.sin(xx * 0.04) * 3.15 +
+      Math.sin(xx * 0.066 + 0.9) * 0.72 +
+      vnoise(x, 96, 11, this.seed) * 0.28
+    const wild =
       vnoise(x, 150, 11, this.seed) * 11.5 +
       vnoise(x, 44, 23, this.seed) * 8 +
-      vnoise(x, 12, 37, this.seed) * 2.6 -
-      8
-    )
+      vnoise(x, 12, 37, this.seed) * 2.6
+    return gentle * (1 - e) + wild * e - 4
   }
   slope(x) {
     return this.height(x + 0.5) - this.height(x - 0.5)
