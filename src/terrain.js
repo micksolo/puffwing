@@ -4,11 +4,11 @@ import { hash01 } from './rng.js'
 // and valleys meet, and the slope never jumps (C1).
 export const HILL_SPAN = 80
 
-// The same opening on every seed. A short warm-up, then a tall ramp,
-// two mid hills, and a deep wow canyon. Knots are {x, y}. Widths vary
-// so a downslope can be long and the ramp after it can stay gentle
-// enough for a hold-and-release to clear it. Slope is still zero at
-// every knot.
+// The same opening on every seed. A short warm-up, a tall ramp, a long
+// mid descent, a low roller, then the wow canyon. Knots are {x, y}.
+// Widths vary so a downslope can be long and the ramp after it can stay
+// gentle enough for a hold-and-release to clear it. Slope is still zero
+// at every knot.
 export const OPENING_KNOTS = [
   // Warm-up. Modest downhill, small ramp, landing on the next downslope.
   { x: 0, y: 4.5 },
@@ -23,20 +23,15 @@ export const OPENING_KNOTS = [
   { x: 360, y: -26 },
   { x: 424, y: -52 },
   { x: 458, y: -68 },
-  // First mid hill.
-  { x: 496, y: -64 },
-  { x: 560, y: -84 },
-  { x: 650, y: -92 },
-  { x: 690, y: -110 },
-  { x: 736, y: -104 },
-  // Second mid, stretching into the wow ramp.
-  { x: 860, y: -140 },
-  { x: 1005, y: -250 },
-  { x: 1055, y: -242 },
-  // Wow canyon. The landing face is a downslope.
-  { x: 1170, y: -305 },
-  { x: 1255, y: -345 },
-  { x: 1335, y: -370 }
+  { x: 492, y: -63 },
+  { x: 640, y: -105 },
+  { x: 780, y: -210 },
+  { x: 880, y: -216 },
+  { x: 960, y: -200 },
+  { x: 1050, y: -255 },
+  { x: 1360, y: -425 },
+  { x: 1520, y: -500 },
+  { x: 1620, y: -530 }
 ]
 
 export const OPENING_END = OPENING_KNOTS[OPENING_KNOTS.length - 1].x
@@ -45,43 +40,57 @@ export const OPENING_END = OPENING_KNOTS[OPENING_KNOTS.length - 1].x
 // jump: warm-up, the big hill, two mids, then the wow.
 export const GUIDE_ARCS = [
   [
-    { x: 65, y: 15.9 },
-    { x: 83, y: 19.1 },
-    { x: 101, y: 18.2 },
-    { x: 119, y: 13.1 },
-    { x: 137, y: 4.1 }
+    { x: 41, y: 5.5 },
+    { x: 63, y: 15.4 },
+    { x: 86, y: 19.1 },
+    { x: 108, y: 16.6 },
+    { x: 130, y: 7.8 },
+    { x: 152, y: -7.2 }
   ],
   [
-    { x: 216, y: -2.5 },
-    { x: 253, y: 6.4 },
-    { x: 290, y: 8.4 },
-    { x: 326, y: 3.6 },
-    { x: 362, y: -7.8 },
-    { x: 398, y: -25.9 },
-    { x: 434, y: -51.1 }
+    { x: 187, y: -15.2 },
+    { x: 209, y: -5.3 },
+    { x: 232, y: 1.9 },
+    { x: 254, y: 6.6 },
+    { x: 276, y: 8.7 },
+    { x: 299, y: 8.3 },
+    { x: 321, y: 5.2 },
+    { x: 344, y: -0.4 },
+    { x: 366, y: -8.6 },
+    { x: 388, y: -19.3 },
+    { x: 412, y: -33.2 },
+    { x: 434, y: -49.9 }
   ],
   [
-    { x: 499, y: -57.8 },
-    { x: 535, y: -55.6 },
-    { x: 572, y: -59 },
-    { x: 609, y: -68.4 },
-    { x: 645, y: -83.8 },
-    { x: 682, y: -105.8 }
+    { x: 502, y: -59.3 },
+    { x: 525, y: -58.3 },
+    { x: 548, y: -59.6 },
+    { x: 571, y: -63.3 },
+    { x: 594, y: -69.2 },
+    { x: 617, y: -77.3 },
+    { x: 640, y: -88.0 },
+    { x: 662, y: -100.8 },
+    { x: 684, y: -116.2 },
+    { x: 707, y: -135.4 },
+    { x: 730, y: -158.6 },
+    { x: 753, y: -186.0 }
   ],
   [
-    { x: 750, y: -102 },
-    { x: 805, y: -108.6 },
-    { x: 859, y: -127.9 },
-    { x: 914, y: -162.5 },
-    { x: 968, y: -215.1 }
-  ],
-  [
-    { x: 1039, y: -233.5 },
-    { x: 1075, y: -227.6 },
-    { x: 1111, y: -233.6 },
-    { x: 1147, y: -251.3 },
-    { x: 1183, y: -280.8 },
-    { x: 1219, y: -322.3 }
+    { x: 890, y: -211.4 },
+    { x: 913, y: -202.2 },
+    { x: 936, y: -195.6 },
+    { x: 958, y: -191.6 },
+    { x: 981, y: -190.2 },
+    { x: 1004, y: -191.3 },
+    { x: 1027, y: -195.0 },
+    { x: 1049, y: -201.3 },
+    { x: 1072, y: -210.1 },
+    { x: 1095, y: -221.5 },
+    { x: 1118, y: -235.8 },
+    { x: 1140, y: -252.9 },
+    { x: 1162, y: -272.9 },
+    { x: 1184, y: -296.8 },
+    { x: 1207, y: -326.0 }
   ]
 ]
 
