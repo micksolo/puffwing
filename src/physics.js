@@ -1,8 +1,16 @@
 export const GLIDE_G = -13
 export const BIRD_R = 0.9
 export const MAX_SPEED = 85
-// Air hold is only a stronger gravity. It never aims the velocity.
-export const HOLD_G_MUL = 4
+// Unheld air gravity, as a multiple of GLIDE_G. 0.8 still left the first
+// charged jump up for about 7.5s and 76m, so this is higher: a launch
+// around 70 forward and 40 up comes down in about 2.5s and stays airy
+// next to the hold below.
+export const FLOAT_G_MUL = 2.2
+export const AIR_FLOAT_G = GLIDE_G * FLOAT_G_MUL
+// Air hold is only a stronger gravity, in full on the first step. It never
+// aims the velocity and never eases in.
+export const HOLD_G_MUL = 6
+export const AIR_HOLD_G = GLIDE_G * HOLD_G_MUL
 // On the ground the same idea is the tangential part of gravity. The held
 // value keeps the 1.2.4 downhill pace (about 240 times the grade).
 const GROUND_G = -22
@@ -10,9 +18,6 @@ const GROUND_HOLD_G = -240
 // A landing this close to the downhill tangent keeps its speed and is
 // snapped onto the slope. Wider than this, or into a rise, is a bump.
 export const LAND_WINDOW = 30 * Math.PI / 180
-// Unheld flight is lighter than the base gravity so a launch hangs.
-// Holding stays at HOLD_G_MUL times the base and never steers the velocity.
-const FLOAT_G = GLIDE_G * 0.5
 // 1.2.4 launch: a charged release adds this on top of the uphill momentum.
 // At about 69 forward it is roughly 38 upward.
 
@@ -92,7 +97,7 @@ export function stepBird(b, hold, terrain, dt, ev) {
     const gy = terrain.height(nx) + BIRD_R
     // One glide step along the tangent. When that point is above the hill,
     // the crest has curved away and the bird is no longer on the ground.
-    const ny = b.y + vx * slope * dt + 0.5 * FLOAT_G * dt * dt
+    const ny = b.y + vx * slope * dt + 0.5 * AIR_FLOAT_G * dt * dt
     const carriedOff = ny > gy + 0.002 && slope > -0.05
     if (!hold && (b.launchCd || 0) <= 0 && vx > 11 && (rising || crest || carriedOff)) {
       const ramp = rising || ahead > 0.02
@@ -123,7 +128,7 @@ export function stepBird(b, hold, terrain, dt, ev) {
     return
   }
 
-  b.vy += (hold ? GLIDE_G * HOLD_G_MUL : FLOAT_G) * dt
+  b.vy += (hold ? AIR_HOLD_G : AIR_FLOAT_G) * dt
   if (!hold) b.vx -= b.vx * 0.003 * dt
 
   b.x += b.vx * dt

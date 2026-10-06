@@ -29,9 +29,9 @@ export class Run {
         break
       }
     }
-    // Close enough to the first downhill that a held dive meets it, and high
-    // enough that the curve is visible before the hill catches the bird.
-    this.bird = { x: sx, y: this.terrain.height(sx) + 3.4, vx: 26, vy: 0, grounded: false }
+    // Close enough that a 6x air hold still meets the first downhill inside
+    // the landing window, and high enough that the curve is visible.
+    this.bird = { x: sx, y: this.terrain.height(sx) + 2.4, vx: 26, vy: 0, grounded: false }
     this.acc = 0
     this.time = 0
     this.dayLeft = DAY_LENGTH

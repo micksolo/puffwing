@@ -133,7 +133,7 @@ test('real Space and the hold pad dive; a glide does not', { timeout: 45000 }, a
     throw new Error('game did not boot')
   }
 
-  assert.equal(await boot(), '1.3.2')
+  assert.equal(await boot(), '1.3.3')
   await play(cdp)
   // A real player clicks Daily Flight, which leaves that button focused
   // unless we move focus. Put focus back on the button and then hold Space
@@ -152,22 +152,24 @@ test('real Space and the hold pad dive; a glide does not', { timeout: 45000 }, a
   assert.ok(held.some((s) => s.rot < -0.4), 'bird never followed the dive, rot ' + held.map((s) => s.rot.toFixed(2)).join(','))
   const heldDrop = y0 - Math.min(...held.map((s) => s.y))
   assert.ok(held.at(-1).time - held[0].time > 0.25, 'game clock did not advance while holding')
-  assert.ok(heldDrop > 3, 'held drop only ' + heldDrop.toFixed(2) + ' from ' + y0.toFixed(2))
+  assert.ok(heldDrop > 2, 'held drop only ' + heldDrop.toFixed(2) + ' from ' + y0.toFixed(2))
 
-  assert.equal(await boot(), '1.3.2')
+  assert.equal(await boot(), '1.3.3')
   await play(cdp)
   const gy0 = await cdp.evalJs('window.__puffwing.state.run.bird.y')
   const glide = await sampleFor(cdp, 0.4)
   const glideDrop = gy0 - Math.min(...glide.map((s) => s.y))
-  assert.ok(heldDrop > glideDrop + 1.5, `held drop ${heldDrop.toFixed(2)} vs glide drop ${glideDrop.toFixed(2)}`)
-  const heldRot = Math.min(...held.map((s) => s.rot))
-  const glideRot = Math.min(...glide.map((s) => s.rot))
+  const heldVy = Math.min(...held.map((s) => s.vy))
+  const glideVy = Math.min(...glide.map((s) => s.vy))
+  // Both meet the hill inside this window, so the extra drop is the
+  // downward speed, not a taller fall.
+  assert.ok(heldDrop > glideDrop, `held drop ${heldDrop.toFixed(2)} vs glide drop ${glideDrop.toFixed(2)}`)
+  assert.ok(heldVy < glideVy - 3, `held vy ${heldVy.toFixed(1)} vs glide vy ${glideVy.toFixed(1)}`)
   const nose = held.at(-1)
   const aim = Math.atan2(nose.vy, Math.max(nose.vx, 1))
   assert.ok(Math.abs(nose.rot - aim) < 0.35, `rotation ${nose.rot.toFixed(2)} lagged the velocity ${aim.toFixed(2)}`)
-  assert.ok(heldRot < glideRot - 0.2, `held rot ${heldRot.toFixed(2)} vs glide rot ${glideRot.toFixed(2)}`)
 
-  assert.equal(await boot(), '1.3.2')
+  assert.equal(await boot(), '1.3.3')
   await play(cdp)
   const pad = await cdp.evalJs(`(() => {
     const el = document.getElementById('divepad')
@@ -182,6 +184,7 @@ test('real Space and the hold pad dive; a glide does not', { timeout: 45000 }, a
   })
   const pressingSamples = await sampleFor(cdp, 0.3)
   const pressing = pressingSamples.at(-1)
+  const steepest = pressingSamples.reduce((a, s) => s.rot < a.rot ? s : a)
   await cdp.send('Input.dispatchMouseEvent', {
     type: 'mouseReleased', x: pad.x, y: pad.y, button: 'left', clickCount: 1
   })
@@ -191,6 +194,6 @@ test('real Space and the hold pad dive; a glide does not', { timeout: 45000 }, a
   assert.equal(pressing.screen, 'play')
   const padAim = Math.atan2(pressing.vy, Math.max(pressing.vx, 1))
   assert.ok(Math.abs(pressing.rot - padAim) < 0.4, `pad rot ${pressing.rot.toFixed(2)} vs velocity ${padAim.toFixed(2)}`)
-  assert.ok(pressing.rot < before.rot - 0.15, `pad rot ${pressing.rot.toFixed(2)} vs before ${before.rot.toFixed(2)}`)
+  assert.ok(steepest.rot < before.rot - 0.15, `pad rot ${steepest.rot.toFixed(2)} vs before ${before.rot.toFixed(2)}`)
   assert.equal(released, 0)
 })

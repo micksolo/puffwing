@@ -29,18 +29,21 @@ function fly(seed, policy, seconds) {
 
 test('GAME_VERSION is semver and shown to the build', () => {
   assert.match(GAME_VERSION, /^\d+\.\d+\.\d+$/)
-  assert.equal(GAME_VERSION, '1.3.2')
+  assert.equal(GAME_VERSION, '1.3.3')
 })
 
 test('holding dives the bird below a glide in the first half second', () => {
   const seed = hashString('2026-10-05')
-  const glide = fly(seed, () => false, 0.45)
-  const dive = fly(seed, () => true, 0.45)
+  // Both are still in the air here. A later sample sits on the hill, so
+  // height stops showing the dive.
+  const glide = fly(seed, () => false, 0.18)
+  const dive = fly(seed, () => true, 0.18)
   const yGlide = glide.run.bird.y
   const yDive = dive.run.bird.y
-  assert.ok(yDive < yGlide - 2, `dive y ${yDive.toFixed(2)} vs glide y ${yGlide.toFixed(2)}`)
-  assert.ok(dive.minVy < glide.minVy - 12, `dive min vy ${dive.minVy.toFixed(1)} vs glide ${glide.minVy.toFixed(1)}`)
-  assert.ok(dive.run.bird.vx >= 25, `dive kept forward speed, vx ${dive.run.bird.vx.toFixed(2)}`)
+  assert.ok(yDive < yGlide - 0.5, `dive y ${yDive.toFixed(2)} vs glide y ${yGlide.toFixed(2)}`)
+  assert.ok(dive.minVy < glide.minVy - 6, `dive min vy ${dive.minVy.toFixed(1)} vs glide ${glide.minVy.toFixed(1)}`)
+  const later = fly(seed, () => true, 0.45)
+  assert.ok(later.run.bird.vx >= 25, `dive kept forward speed, vx ${later.run.bird.vx.toFixed(2)}`)
 })
 
 test('holding on a downslope never cuts horizontal speed and builds it', () => {
@@ -153,6 +156,8 @@ test('holding the first downhill and releasing on the rise gets a real flight', 
   assert.ok(launch.vy > 30, `launch vy ${launch.vy.toFixed(1)}`)
   assert.ok(clearance > 5, `clearance ${clearance.toFixed(2)}m`)
   assert.ok(air > 1, `airtime ${air.toFixed(2)}s`)
+  assert.ok(air < 4, `flight still hung, airtime ${air.toFixed(2)}s`)
+  assert.ok(clearance < 40, `flight still hung, clearance ${clearance.toFixed(1)}m`)
 })
 
 test('the first 160 metres stay gentle and later hills steepen', () => {
