@@ -2,7 +2,7 @@ import { hash01 } from './rng.js'
 
 // Cosine segments between hill keys. Slope is zero at every key, so peaks
 // and valleys meet, and the slope never jumps (C1).
-export const HILL_SPAN = 64
+export const HILL_SPAN = 80
 
 function difficulty(x) {
   const t = Math.max(0, Math.min(1, (x - 220) / 500))
@@ -11,7 +11,8 @@ function difficulty(x) {
 
 function ampAt(x) {
   // The opening grade stays under 0.2. Later hills pass 0.35.
-  return 3.15 + difficulty(x) * 9.4
+  // Span 80 needs a taller late amplitude or the grade stays under 0.35.
+  return 3.15 + difficulty(x) * 11.5
 }
 
 export class Terrain {
@@ -21,9 +22,9 @@ export class Terrain {
   keyY(i) {
     const n = i | 0
     // The same gentle opener on every seed: a downhill, then a rise.
-    if (n <= 0) return 3.3
-    if (n === 1) return -3.5
-    if (n === 2) return 2.6
+    if (n <= 0) return 4.6
+    if (n === 1) return -4.9
+    if (n === 2) return 3.6
     const amp = ampAt(n * HILL_SPAN)
     return (hash01(this.seed, n, 11) * 2 - 1) * amp
   }

@@ -29,7 +29,7 @@ function fly(seed, policy, seconds) {
 
 test('GAME_VERSION is semver and shown to the build', () => {
   assert.match(GAME_VERSION, /^\d+\.\d+\.\d+$/)
-  assert.equal(GAME_VERSION, '1.3.1')
+  assert.equal(GAME_VERSION, '1.3.2')
 })
 
 test('holding dives the bird below a glide in the first half second', () => {
@@ -121,6 +121,38 @@ test('hold then release on the first hill launches', () => {
   assert.ok(minHoldVx >= vx0 - 0.05, `hold cut speed to ${minHoldVx.toFixed(2)} from ${vx0}`)
   assert.ok(run.launches > 0, 'no launch off the first hill')
   assert.ok(run.bird.vy > 4 || alt > 3, `launch did not clear, vy ${run.bird.vy.toFixed(2)} alt ${alt.toFixed(2)}`)
+})
+
+test('holding the first downhill and releasing on the rise gets a real flight', () => {
+  const run = new Run({ seed: hashString('2026-10-05'), mode: 'daily' })
+  let launch = null
+  let air = 0
+  let clearance = 0
+  let t = 0
+  while (t < 8 && !run.over) {
+    const b = run.bird
+    const sl = run.terrain.slope(b.x)
+    const ahead = run.terrain.slope(b.x + 5)
+    const hold = sl < 0.02 && ahead < 0.08
+    const launches = run.launches
+    run.update(1 / 60, hold)
+    t += 1 / 60
+    if (!launch && run.launches > launches) {
+      launch = { vx: run.bird.vx, vy: run.bird.vy, x: run.bird.x }
+    }
+    if (launch && !run.bird.grounded) {
+      air += 1 / 60
+      const gap = run.bird.y - run.terrain.height(run.bird.x) - BIRD_R
+      if (gap > clearance) clearance = gap
+    } else if (launch) {
+      break
+    }
+  }
+  assert.ok(launch, 'never left the ground')
+  assert.ok(launch.vx > 60, `launch vx ${launch.vx.toFixed(1)}`)
+  assert.ok(launch.vy > 30, `launch vy ${launch.vy.toFixed(1)}`)
+  assert.ok(clearance > 5, `clearance ${clearance.toFixed(2)}m`)
+  assert.ok(air > 1, `airtime ${air.toFixed(2)}s`)
 })
 
 test('the first 160 metres stay gentle and later hills steepen', () => {
