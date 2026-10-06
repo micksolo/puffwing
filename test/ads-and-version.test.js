@@ -27,7 +27,7 @@ test('ads stay off unless a real publisher id is configured', () => {
 })
 
 test('the page shows GAME_VERSION and Netlify publishes the repo root with no build', () => {
-  assert.equal(GAME_VERSION, '1.3.3')
+  assert.equal(GAME_VERSION, '1.3.4')
   const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8')
   const toml = fs.readFileSync(new URL('../netlify.toml', import.meta.url), 'utf8')
   const main = fs.readFileSync(new URL('../src/main.js', import.meta.url), 'utf8')

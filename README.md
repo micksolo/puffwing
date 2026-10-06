@@ -9,7 +9,7 @@ Built with three.js, Vite, and Supabase. Deploys to Netlify as a static site.
 - **Desktop:** hold `SPACE` (or the on-screen **HOLD** button, or click and hold) to dive. Release on an uphill to launch.
 - **Mobile:** hold the **HOLD** button, or touch and hold the screen, to dive.
 
-The current build is `v1.3.3` (see the title card and the DIVE pill). Phones and tablets play in landscape. Release on a rise to launch.
+The current build is `v1.3.4` (see the title card and the DIVE pill). Phones and tablets play in landscape. Release on a rise to launch.
 
 Land while moving fast on a **downhill** for a **PERFECT** boost (+ speed + daylight). Chain 3 perfects to enter **FEVER** (rainbow trail, coin magnet). When the sun sets and you come to rest, the flight ends.
 

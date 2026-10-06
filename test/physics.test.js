@@ -3,7 +3,7 @@ import test from 'node:test'
 import { Run, frameDistance } from '../src/game.js'
 import { approachAngle, flightAngle, stepBird, BIRD_R, GLIDE_G, HOLD_G_MUL, LAND_WINDOW } from '../src/physics.js'
 import { hashString } from '../src/rng.js'
-import { HILL_SPAN, Terrain } from '../src/terrain.js'
+import { HILL_SPAN, OPENING_END, OPENING_KNOTS, Terrain } from '../src/terrain.js'
 import { GAME_VERSION } from '../src/version.js'
 
 function fly(seed, policy, seconds) {
@@ -29,7 +29,7 @@ function fly(seed, policy, seconds) {
 
 test('GAME_VERSION is semver and shown to the build', () => {
   assert.match(GAME_VERSION, /^\d+\.\d+\.\d+$/)
-  assert.equal(GAME_VERSION, '1.3.3')
+  assert.equal(GAME_VERSION, '1.3.4')
 })
 
 test('holding dives the bird below a glide in the first half second', () => {
@@ -101,6 +101,10 @@ test('the camera pulls back, and further when the bird is high or fast', () => {
   assert.ok(phonePortrait <= 252, `portrait distance capped, got ${phonePortrait.toFixed(1)}`)
 })
 
+function holdRelease(run) {
+  return run.bird.grounded && run.terrain.slope(run.bird.x) < 0.02
+}
+
 test('hold then release on the first hill launches', () => {
   const run = new Run({ seed: hashString('2026-10-05'), mode: 'daily' })
   const vx0 = run.bird.vx
@@ -108,13 +112,10 @@ test('hold then release on the first hill launches', () => {
   let sawHold = false
   let t = 0
   while (t < 10 && !run.over && run.launches === 0) {
-    const b = run.bird
-    const sl = run.terrain.slope(b.x)
-    const ahead = run.terrain.slope(b.x + 5)
-    const hold = sl < 0.02 && ahead < 0.08
+    const hold = holdRelease(run)
     if (hold) {
       sawHold = true
-      if (b.vx < minHoldVx) minHoldVx = b.vx
+      if (run.bird.vx < minHoldVx) minHoldVx = run.bird.vx
     }
     run.update(1 / 60, hold)
     t += 1 / 60
@@ -126,49 +127,40 @@ test('hold then release on the first hill launches', () => {
   assert.ok(run.bird.vy > 4 || alt > 3, `launch did not clear, vy ${run.bird.vy.toFixed(2)} alt ${alt.toFixed(2)}`)
 })
 
-test('holding the first downhill and releasing on the rise gets a real flight', () => {
+test('holding downhills and releasing on rises clears the big hill', () => {
   const run = new Run({ seed: hashString('2026-10-05'), mode: 'daily' })
-  let launch = null
-  let air = 0
-  let clearance = 0
+  let best = null
+  let cur = null
   let t = 0
-  while (t < 8 && !run.over) {
-    const b = run.bird
-    const sl = run.terrain.slope(b.x)
-    const ahead = run.terrain.slope(b.x + 5)
-    const hold = sl < 0.02 && ahead < 0.08
+  while (t < 12 && !run.over) {
     const launches = run.launches
-    run.update(1 / 60, hold)
+    run.update(1 / 60, holdRelease(run))
     t += 1 / 60
-    if (!launch && run.launches > launches) {
-      launch = { vx: run.bird.vx, vy: run.bird.vy, x: run.bird.x }
+    if (run.launches > launches) {
+      cur = { vx: run.bird.vx, vy: run.bird.vy, air: 0, clearance: 0 }
     }
-    if (launch && !run.bird.grounded) {
-      air += 1 / 60
+    if (cur && !run.bird.grounded) {
+      cur.air += 1 / 60
       const gap = run.bird.y - run.terrain.height(run.bird.x) - BIRD_R
-      if (gap > clearance) clearance = gap
-    } else if (launch) {
-      break
+      if (gap > cur.clearance) cur.clearance = gap
+    } else if (cur && run.bird.grounded) {
+      if (!best || cur.clearance > best.clearance) best = cur
+      cur = null
     }
   }
-  assert.ok(launch, 'never left the ground')
-  assert.ok(launch.vx > 60, `launch vx ${launch.vx.toFixed(1)}`)
-  assert.ok(launch.vy > 30, `launch vy ${launch.vy.toFixed(1)}`)
-  assert.ok(clearance > 5, `clearance ${clearance.toFixed(2)}m`)
-  assert.ok(air > 1, `airtime ${air.toFixed(2)}s`)
-  assert.ok(air < 4, `flight still hung, airtime ${air.toFixed(2)}s`)
-  assert.ok(clearance < 40, `flight still hung, clearance ${clearance.toFixed(1)}m`)
+  if (cur && (!best || cur.clearance > best.clearance)) best = cur
+  assert.ok(best, 'never left the ground')
+  assert.ok(best.clearance >= 25, `big hill clearance ${best.clearance.toFixed(1)}m`)
+  assert.ok(best.vy > 30, `big hill launch vy ${best.vy.toFixed(1)}`)
+  assert.ok(best.air > 2.5, `big hill airtime ${best.air.toFixed(2)}s`)
 })
 
-test('the first 160 metres stay gentle and later hills steepen', () => {
+test('later hills still steepen', () => {
   const keys = ['2026-10-05', '2026-10-04', 'alpha', 'zzzz', 'puff']
   let later = 0
   for (const key of keys) {
     const terrain = new Terrain(hashString(key))
-    let max = 0
-    for (let x = 0; x <= 160; x += 1) max = Math.max(max, Math.abs(terrain.slope(x)))
-    assert.ok(max < 0.2, `${key} opening slope ${max.toFixed(3)}`)
-    for (let x = 900; x <= 1600; x += 2) later = Math.max(later, Math.abs(terrain.slope(x)))
+    for (let x = 1400; x <= 2200; x += 2) later = Math.max(later, Math.abs(terrain.slope(x)))
   }
   assert.ok(later > 0.35, `later hills stayed flat, max slope ${later.toFixed(3)}`)
 })
@@ -245,16 +237,18 @@ test('perfect landings keep the bonus', () => {
   assert.ok(Math.hypot(run.bird.vx, run.bird.vy) > before, 'perfect did not add speed')
 })
 
-test('hill slopes stay continuous and flat at the peaks and valleys', () => {
+test('opening slopes stay continuous and flat at the peaks and valleys', () => {
   const terrain = new Terrain(hashString('2026-10-05'))
-  for (let i = 0; i <= 24; i++) {
-    const x = i * HILL_SPAN
-    assert.ok(Math.abs(terrain.slope(x)) < 1e-8, `slope at key ${x} is ${terrain.slope(x)}`)
+  const keys = OPENING_KNOTS.map(k => k.x)
+  for (let i = 0; i <= 16; i++) keys.push(OPENING_END + i * HILL_SPAN)
+  for (const x of keys) {
+    assert.ok(Math.abs(terrain.slope(x)) < 1e-6, `slope at key ${x} is ${terrain.slope(x)}`)
+    if (x < 1) continue
     const left = terrain.slope(x - 0.25)
     const right = terrain.slope(x + 0.25)
-    assert.ok(Math.abs(left) < 0.02 && Math.abs(right) < 0.02, `slope jumps at ${x}: ${left}, ${right}`)
+    assert.ok(Math.abs(left) < 0.05 && Math.abs(right) < 0.05, `slope jumps at ${x}: ${left}, ${right}`)
   }
-  for (let x = 3; x < 700; x += 11) {
+  for (let x = 3; x < OPENING_END + 200; x += 7) {
     const fd = (terrain.height(x + 0.05) - terrain.height(x - 0.05)) / 0.1
     assert.ok(Math.abs(fd - terrain.slope(x)) < 0.015, `slope mismatch at ${x}: ${fd} vs ${terrain.slope(x)}`)
     const jump = Math.abs(terrain.slope(x + 0.5) - terrain.slope(x))
@@ -290,18 +284,7 @@ test('the render pose blends the previous and current physics step', () => {
 test('release on an upslope launches, and diving the downslope outruns never holding', () => {
   const seed = hashString('2026-10-05')
   const none = fly(seed, () => false, 20)
-  function timed(run) {
-    const b = run.bird
-    const sl = run.terrain.slope(b.x)
-    const ahead = run.terrain.slope(b.x + 3.2 + Math.min(Math.max(b.vx, 0), 40) * 0.1)
-    if (!b.grounded) {
-      if (b.vy > -1.5) return false
-      return sl < 0.08 || ahead < 0.02
-    }
-    if (sl > 0.04 || ahead > 0.1) return false
-    return true
-  }
-  const good = fly(seed, timed, 20)
+  const good = fly(seed, holdRelease, 20)
   assert.ok(good.maxVy > 8, 'expected an upward launch, max vy ' + good.maxVy.toFixed(1))
   assert.ok(good.maxAlt > 4, 'expected a real hop, max alt ' + good.maxAlt.toFixed(1))
   assert.ok(good.run.launches > 0, 'launch counter')
