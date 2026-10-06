@@ -133,7 +133,7 @@ test('real Space and the hold pad dive; a glide does not', { timeout: 45000 }, a
     throw new Error('game did not boot')
   }
 
-  assert.equal(await boot(), '1.3.4')
+  assert.equal(await boot(), '1.4.0')
   await play(cdp)
   // A real player clicks Daily Flight, which leaves that button focused
   // unless we move focus. Put focus back on the button and then hold Space
@@ -154,7 +154,7 @@ test('real Space and the hold pad dive; a glide does not', { timeout: 45000 }, a
   assert.ok(held.at(-1).time - held[0].time > 0.25, 'game clock did not advance while holding')
   assert.ok(heldDrop > 2, 'held drop only ' + heldDrop.toFixed(2) + ' from ' + y0.toFixed(2))
 
-  assert.equal(await boot(), '1.3.4')
+  assert.equal(await boot(), '1.4.0')
   await play(cdp)
   const gy0 = await cdp.evalJs('window.__puffwing.state.run.bird.y')
   const glide = await sampleFor(cdp, 0.4)
@@ -169,7 +169,7 @@ test('real Space and the hold pad dive; a glide does not', { timeout: 45000 }, a
   const aim = Math.atan2(nose.vy, Math.max(nose.vx, 1))
   assert.ok(Math.abs(nose.rot - aim) < 0.35, `rotation ${nose.rot.toFixed(2)} lagged the velocity ${aim.toFixed(2)}`)
 
-  assert.equal(await boot(), '1.3.4')
+  assert.equal(await boot(), '1.4.0')
   await play(cdp)
   const pad = await cdp.evalJs(`(() => {
     const el = document.getElementById('divepad')

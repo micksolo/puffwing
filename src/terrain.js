@@ -4,93 +4,53 @@ import { hash01 } from './rng.js'
 // and valleys meet, and the slope never jumps (C1).
 export const HILL_SPAN = 80
 
-// The same opening on every seed. A short warm-up, a tall ramp, a long
-// mid descent, a low roller, then the wow canyon. Knots are {x, y}.
-// Widths vary so a downslope can be long and the ramp after it can stay
-// gentle enough for a hold-and-release to clear it. Slope is still zero
-// at every knot.
-export const OPENING_KNOTS = [
-  // Warm-up. Modest downhill, small ramp, landing on the next downslope.
-  { x: 0, y: 4.5 },
-  { x: 34, y: 0.5 },
-  { x: 62, y: 5 },
-  { x: 112, y: 5 },
-  { x: 176, y: -20 },
-  // Big ramp. The rise is long enough that the bird leaves before the
-  // lip, and the ground under the arc stays low through the landing face.
-  { x: 236, y: -12 },
-  { x: 300, y: -32 },
-  { x: 360, y: -26 },
-  { x: 424, y: -52 },
-  { x: 458, y: -68 },
-  { x: 492, y: -63 },
-  { x: 640, y: -105 },
-  { x: 780, y: -210 },
-  { x: 880, y: -216 },
-  { x: 960, y: -200 },
-  { x: 1050, y: -255 },
-  { x: 1360, y: -425 },
-  { x: 1520, y: -500 },
-  { x: 1620, y: -530 }
+// The same opening on every seed. A gentle lead-in, one ramp into a
+// deep face, then a run of moderate hills. Slope is zero at every knot.
+const OPENING_HEAD = [
+  { x: 0, y: 6 },
+  { x: 36, y: 4.5 },
+  { x: 90, y: -14 },
+  { x: 150, y: -20 },
+  { x: 190, y: -4 },
+  { x: 376, y: -190 }
 ]
+
+function moderateHills(knots) {
+  let x = knots[knots.length - 1].x
+  let y = knots[knots.length - 1].y
+  let down = false
+  for (let i = 0; i < 48; i++) {
+    x += 64
+    y += down ? -18 : 14
+    knots.push({ x, y })
+    down = !down
+  }
+  return knots
+}
+
+export const OPENING_KNOTS = moderateHills(OPENING_HEAD.map(k => ({ x: k.x, y: k.y })))
 
 export const OPENING_END = OPENING_KNOTS[OPENING_KNOTS.length - 1].x
 
-// Coins along the hold-on-downhill, release-on-rise line. Each arc is one
-// jump: warm-up, the big hill, two mids, then the wow.
+// Coins along the hold-on-downhill, release-on-rise line. The first arc is
+// the opening face; the second is the hill after it.
 export const GUIDE_ARCS = [
   [
-    { x: 41, y: 5.5 },
-    { x: 63, y: 15.4 },
-    { x: 86, y: 19.1 },
-    { x: 108, y: 16.6 },
-    { x: 130, y: 7.8 },
-    { x: 152, y: -7.2 }
+    { x: 176, y: -7.5 },
+    { x: 198, y: -0.1 },
+    { x: 220, y: -3 },
+    { x: 242, y: -16.2 },
+    { x: 264, y: -39.3 },
+    { x: 286, y: -72.6 },
+    { x: 308, y: -116.4 }
   ],
   [
-    { x: 187, y: -15.2 },
-    { x: 209, y: -5.3 },
-    { x: 232, y: 1.9 },
-    { x: 254, y: 6.6 },
-    { x: 276, y: 8.7 },
-    { x: 299, y: 8.3 },
-    { x: 321, y: 5.2 },
-    { x: 344, y: -0.4 },
-    { x: 366, y: -8.6 },
-    { x: 388, y: -19.3 },
-    { x: 412, y: -33.2 },
-    { x: 434, y: -49.9 }
-  ],
-  [
-    { x: 502, y: -59.3 },
-    { x: 525, y: -58.3 },
-    { x: 548, y: -59.6 },
-    { x: 571, y: -63.3 },
-    { x: 594, y: -69.2 },
-    { x: 617, y: -77.3 },
-    { x: 640, y: -88.0 },
-    { x: 662, y: -100.8 },
-    { x: 684, y: -116.2 },
-    { x: 707, y: -135.4 },
-    { x: 730, y: -158.6 },
-    { x: 753, y: -186.0 }
-  ],
-  [
-    { x: 890, y: -211.4 },
-    { x: 913, y: -202.2 },
-    { x: 936, y: -195.6 },
-    { x: 958, y: -191.6 },
-    { x: 981, y: -190.2 },
-    { x: 1004, y: -191.3 },
-    { x: 1027, y: -195.0 },
-    { x: 1049, y: -201.3 },
-    { x: 1072, y: -210.1 },
-    { x: 1095, y: -221.5 },
-    { x: 1118, y: -235.8 },
-    { x: 1140, y: -252.9 },
-    { x: 1162, y: -272.9 },
-    { x: 1184, y: -296.8 },
-    { x: 1207, y: -326.0 }
+    { x: 416, y: -179.5 },
+    { x: 438, y: -173.7 },
+    { x: 461, y: -170.9 },
+    { x: 483, y: -170.9 },
+    { x: 505, y: -173.8 },
+    { x: 528, y: -179.5 }
   ]
 ]
 
@@ -112,6 +72,13 @@ function cosineHeight(y0, y1, t) {
 function cosineSlope(y0, y1, w, t) {
   if (w <= 0) return 0
   return (y1 - y0) * (Math.PI / (2 * w)) * Math.sin(Math.PI * t)
+}
+
+function cosineCurvature(y0, y1, w, t) {
+  if (w <= 0) return 0
+  const yp = cosineSlope(y0, y1, w, t)
+  const ypp = (y1 - y0) * (Math.PI * Math.PI) / (2 * w * w) * Math.cos(Math.PI * t)
+  return ypp / Math.pow(1 + yp * yp, 1.5)
 }
 
 export class Terrain {
@@ -160,6 +127,10 @@ export class Terrain {
   slope(x) {
     const s = this.segment(x)
     return cosineSlope(s.y0, s.y1, s.w, s.t)
+  }
+  curvature(x) {
+    const s = this.segment(x)
+    return cosineCurvature(s.y0, s.y1, s.w, s.t)
   }
   coinArcsInRange(x0, x1) {
     const res = []

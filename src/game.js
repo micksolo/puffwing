@@ -1,5 +1,5 @@
 import { Terrain } from './terrain.js'
-import { stepBird, flightAngle, BIRD_R, MAX_SPEED } from './physics.js'
+import { stepBird, flightAngle, BIRD_R, MAX_SPEED, PERFECT_WINDOW } from './physics.js'
 
 export const REC_PERIOD = 0.15
 export const DAY_LENGTH = 60
@@ -29,9 +29,9 @@ export class Run {
         break
       }
     }
-    // Close enough that a 6x air hold still meets the first downhill inside
-    // the landing window, and high enough that the curve is visible.
-    this.bird = { x: sx, y: this.terrain.height(sx) + 2.4, vx: 26, vy: 0, grounded: false }
+    // Close to the slope, so the opening touch is under half a second and
+    // coasting into it is not a perfect.
+    this.bird = { x: sx, y: this.terrain.height(sx) + 1.2, vx: 26, vy: 0, grounded: false }
     this.acc = 0
     this.time = 0
     this.dayLeft = DAY_LENGTH
@@ -188,7 +188,7 @@ export class Run {
     if (diff > Math.PI) diff -= Math.PI * 2
     if (diff < -Math.PI) diff += Math.PI * 2
     const perfect =
-      l.slope < -0.06 && speed > 14 && Math.abs(diff) < 0.5 && (l.airT || 0) > 0.45 && this.time - this.lastPerfect > 0.75
+      l.slope < -0.02 && speed > 12 && Math.abs(diff) < PERFECT_WINDOW && (l.airT || 0) >= 0.5 && this.time - this.lastPerfect > 0.75
     if (perfect) {
       const sp = Math.max(speed, 1)
       const f = Math.min(sp + 8, MAX_SPEED) / sp
