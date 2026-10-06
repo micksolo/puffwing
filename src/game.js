@@ -1,28 +1,37 @@
 import { Terrain } from './terrain.js'
-import { stepBird, BIRD_R } from './physics.js'
+import { stepBird, flightAngle, BIRD_R, MAX_SPEED, PERFECT_WINDOW } from './physics.js'
 
 export const REC_PERIOD = 0.15
 export const DAY_LENGTH = 60
 export const DAY_MAX = 75
+
+// Landscape play, including a phone on its side (about 844×390), uses the
+// desktop camera distance. A portrait frame is not how phones are played;
+// the extra pull-back below is only for a genuinely tall window.
+export function frameDistance(camZ, aspect) {
+  const a = Math.max(Number(aspect) || 1, 0.36)
+  if (a >= 1.05) return camZ
+  const widen = Math.min(2.05, 0.9 / a)
+  return Math.min(camZ * widen, 252)
+}
 
 export class Run {
   constructor({ seed, mode, ghost }) {
     this.terrain = new Terrain(seed)
     this.mode = mode
     this.ghost = ghost || null
-    let sx = 2
-    let best = -1
-    for (let x = 0; x <= 800; x += 5) {
-      if (this.terrain.slope(x) >= 0) continue
-      if (this.terrain.slope(x + 10) >= 0) continue
-      let s = 0
-      for (let k = 0; k <= 60; k += 5) s += Math.max(0, -this.terrain.slope(x + k))
-      if (s > best) {
-        best = s
+    // Start on the gentle opening, on the first real downhill, a little above
+    // the ground so the diagonal dive is visible before the hill catches it.
+    let sx = 10
+    for (let x = 4; x <= 150; x += 2) {
+      if (this.terrain.slope(x) < -0.05 && this.terrain.slope(x + 18) < -0.04) {
         sx = x
+        break
       }
     }
-    this.bird = { x: sx, y: this.terrain.height(sx) + 12, vx: 18, vy: 0, grounded: false }
+    // Close to the slope, so the opening touch is under half a second and
+    // coasting into it is not a perfect.
+    this.bird = { x: sx, y: this.terrain.height(sx) + 1.2, vx: 26, vy: 0, grounded: false }
     this.acc = 0
     this.time = 0
     this.dayLeft = DAY_LENGTH
@@ -37,12 +46,59 @@ export class Run {
     this.recAcc = 0
     this.events = []
     this.over = false
+    this.endCause = ''
     this.postNight = 0
     this.slowT = 0
     this.lastPerfect = -10
+    this.dives = 0
+    this.launches = 0
+    this.airtime = 0
+    this.holdPrev = false
     this.camX = this.bird.x
     this.camY = this.bird.y + 4
-    this.camZ = 26
+    this.camZ = 102
+    this.alpha = 0
+    this.prev = this.capture()
+    this.lastLanding = null
+  }
+
+  capture() {
+    const b = this.bird
+    return {
+      x: b.x,
+      y: b.y,
+      vx: b.vx,
+      vy: b.vy,
+      grounded: !!b.grounded,
+      angle: flightAngle(b.vx, b.vy, !!b.grounded, this.terrain.slope(b.x)),
+      camX: this.camX,
+      camY: this.camY,
+      camZ: this.camZ
+    }
+  }
+
+  pose() {
+    const a = Math.max(0, Math.min(1, this.alpha || 0))
+    const p = this.prev
+    const b = this.bird
+    const ang = flightAngle(b.vx, b.vy, !!b.grounded, this.terrain.slope(b.x))
+    let d = ang - p.angle
+    if (d > Math.PI) d -= Math.PI * 2
+    if (d < -Math.PI) d += Math.PI * 2
+    const x = p.x + (b.x - p.x) * a
+    return {
+      x,
+      y: p.y + (b.y - p.y) * a,
+      vx: p.vx + (b.vx - p.vx) * a,
+      vy: p.vy + (b.vy - p.vy) * a,
+      grounded: !!b.grounded,
+      angle: p.angle + d * a,
+      slope: this.terrain.slope(x),
+      camX: p.camX + (this.camX - p.camX) * a,
+      camY: p.camY + (this.camY - p.camY) * a,
+      camZ: p.camZ + (this.camZ - p.camZ) * a,
+      alpha: a
+    }
   }
 
   get dayT() {
@@ -66,21 +122,34 @@ export class Run {
 
   update(dt, hold) {
     if (this.over) return
+    const pressed = !!hold
+    if (pressed && !this.holdPrev) this.dives++
+    this.holdPrev = pressed
     this.acc += Math.min(dt, 0.1)
     const h = 1 / 120
     let guard = 0
     while (this.acc >= h && guard++ < 12 && !this.over) {
+      this.prev = this.capture()
       this.step(h, hold)
       this.acc -= h
     }
-    if (this.acc > h) this.acc = 0
+    if (this.acc < 0) this.acc = 0
+    this.alpha = this.acc / h
   }
 
   step(dt, hold) {
     const b = this.bird
     const ev = {}
     stepBird(b, hold, this.terrain, dt, ev)
-    if (ev.landing) this.handleLanding(ev.landing)
+    if (!b.grounded) this.airtime += dt
+    if (ev.launch) {
+      this.launches++
+      this.events.push({ type: 'launch', x: b.x, y: b.y })
+    }
+    if (ev.landing) {
+      this.lastLanding = ev.landing
+      this.handleLanding(ev.landing)
+    }
     this.collectCoins()
     this.checkStuck(dt)
     this.time += dt
@@ -97,7 +166,9 @@ export class Run {
       }
     } else {
       this.postNight += dt
-      if ((b.grounded && this.speed < 4) || this.postNight > 12) this.finish()
+      if ((b.grounded && this.speed < 4) || this.postNight > 12) {
+        this.finish(b.grounded && this.speed < 4 ? 'beach' : 'night')
+      }
     }
     if (this.fever) {
       this.feverT -= dt
@@ -117,10 +188,10 @@ export class Run {
     if (diff > Math.PI) diff -= Math.PI * 2
     if (diff < -Math.PI) diff += Math.PI * 2
     const perfect =
-      l.slope < -0.06 && speed > 14 && Math.abs(diff) < 0.5 && (l.airT || 0) > 0.45 && this.time - this.lastPerfect > 0.75
+      l.slope < -0.02 && speed > 12 && Math.abs(diff) < PERFECT_WINDOW && (l.airT || 0) >= 0.5 && this.time - this.lastPerfect > 0.75
     if (perfect) {
       const sp = Math.max(speed, 1)
-      const f = Math.min(sp + 5, 55) / sp
+      const f = Math.min(sp + 8, MAX_SPEED) / sp
       b.vx *= f
       b.vy *= f
       this.perfects++
@@ -132,9 +203,7 @@ export class Run {
       this.feverT = 14
       this.lastPerfect = this.time
       this.events.push({ type: 'perfect', combo: this.combo, x: b.x, y: b.y })
-    } else if (l.vn < -15 || Math.abs(diff) > 1.15) {
-      b.vx *= 0.9
-      b.vy *= 0.9
+    } else if (!l.smooth && (l.slope > 0.05 || Math.abs(l.diff) > 0.52)) {
       this.combo = 0
       if (this.fever) {
         this.fever = false
@@ -184,7 +253,7 @@ export class Run {
       this.slowT += dt
       if (this.slowT > 1.8) {
         this.slowT = -5
-        b.vx = Math.max(b.vx, 12)
+        b.vx = Math.max(b.vx, 20)
         this.events.push({ type: 'breeze', x: b.x, y: b.y })
       }
     } else if (this.slowT > 0) {
@@ -194,17 +263,21 @@ export class Run {
 
   updateCamera(dt) {
     const b = this.bird
-    const tx = b.x + Math.min(Math.max(b.vx, 0), 45) * 0.22 + 5
-    const ty = b.y + 4
-    const tz = 28 + Math.min(this.speed * 0.12, 7)
-    this.camX += (tx - this.camX) * Math.min(1, 6 * dt)
+    const alt = Math.max(0, b.y - this.terrain.height(b.x) - 0.9)
+    const lead = 18 + Math.min(Math.max(b.vx, 0), 70) * 0.28
+    const tx = b.x + lead
+    // Sit a little above the bird, and look down into the valley when it climbs.
+    const ty = b.y + 2.2 - Math.min(alt, 24) * 0.32
+    const tz = 102 + Math.min(this.speed * 0.6, 39) + Math.min(alt * 1.65, 48)
+    this.camX += (tx - this.camX) * Math.min(1, 5 * dt)
     this.camY += (ty - this.camY) * Math.min(1, 3 * dt)
-    this.camZ += (tz - this.camZ) * Math.min(1, 2 * dt)
+    this.camZ += (tz - this.camZ) * Math.min(1, 2.2 * dt)
   }
 
-  finish() {
+  finish(cause) {
     if (this.over) return
     this.over = true
-    this.events.push({ type: 'end' })
+    this.endCause = cause || 'beach'
+    this.events.push({ type: 'end', cause: this.endCause })
   }
 }

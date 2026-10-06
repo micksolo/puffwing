@@ -1,19 +1,23 @@
 import * as THREE from 'three'
-import './style.css'
 import { World } from './world.js'
+import { GAME_VERSION } from './version.js'
 import { createBird, animateBird } from './bird.js'
-import { Run } from './game.js'
+import { Run, frameDistance } from './game.js'
 import * as lb from './leaderboard.js'
 import { todayKey, hashString, randomName } from './rng.js'
+import { track, startAnalytics } from './analytics.js'
+import { initAds, gateNextFlight } from './ads.js'
+import { lockLandscape, readOrient, shouldBlockForRotate } from './orient.js'
 
 const $ = (s) => document.getElementById(s)
 
 const canvas = $('c')
+canvas.tabIndex = 0
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true })
 renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2))
 
 const scene = new THREE.Scene()
-const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 500)
+const camera = new THREE.PerspectiveCamera(56, 1, 0.1, 2000)
 scene.add(new THREE.HemisphereLight('#dff4ff', '#9fe6c4', 0.95))
 const sunLight = new THREE.DirectionalLight('#fff2d0', 1.1)
 sunLight.position.set(20, 40, 60)
@@ -27,7 +31,27 @@ const state = {
   run: null,
   boardRows: [],
   boardSource: 'local',
-  ghostOn: localStorage.getItem('puffwing.ghost') !== '0'
+  ghostOn: localStorage.getItem('puffwing.ghost') !== '0',
+  milestones: {},
+  runs: 0
+}
+let lastRunEndT = null
+
+startAnalytics(() => {
+  const run = state.run
+  return {
+    location: state.screen,
+    score: run ? run.score : 0,
+    distance: run ? run.distance : 0,
+    runs: state.runs
+  }
+})
+initAds()
+
+function milestone(step) {
+  if (state.milestones[step]) return
+  state.milestones[step] = true
+  track('milestone', { step })
 }
 
 const world = new World(scene, seedToday)
@@ -42,37 +66,119 @@ function resize() {
   const h = innerHeight
   renderer.setSize(w, h, false)
   camera.aspect = w / h
+  camera.fov = camera.aspect < 0.85 ? 74 : 56
   camera.updateProjectionMatrix()
 }
 addEventListener('resize', resize)
 resize()
 
 const input = { hold: false }
-function holdOn() {
-  if (state.screen === 'play') {
-    input.hold = true
+const divePad = $('divepad')
+let rotateBlocked = false
+let pendingMode = null
+
+function syncRotate() {
+  rotateBlocked = shouldBlockForRotate(readOrient())
+  $('rotateoverlay').classList.toggle('hidden', !rotateBlocked)
+  window.__puffwing.rotateBlocked = rotateBlocked
+  if (rotateBlocked) {
+    input.hold = false
+    input.keys = false
+    return
+  }
+  if (pendingMode && state.screen !== 'play') {
+    const mode = pendingMode
+    pendingMode = null
+    startRun(mode)
+  }
+}
+
+function requestLandscape() {
+  lockLandscape()
+}
+
+function typingTarget(el) {
+  if (!el || !el.tagName) return false
+  const tag = el.tagName
+  return tag === 'INPUT' || tag === 'TEXTAREA' || el.isContentEditable
+}
+
+function grabFocus() {
+  const ae = document.activeElement
+  if (ae && ae !== canvas && typeof ae.blur === 'function') ae.blur()
+  try { canvas.focus({ preventScroll: true }) } catch { canvas.focus() }
+}
+
+function setHold(next) {
+  if (rotateBlocked || state.screen !== 'play') {
+    input.hold = false
+    return
+  }
+  input.hold = !!next
+  if (next) {
     $('hint').classList.add('hidden')
     resumeAudio()
   }
 }
-addEventListener('pointerdown', (e) => {
-  if (e.target.closest('button, input, a, label')) return
-  holdOn()
+
+function pointerHold(e) {
+  if (state.screen !== 'play') return
+  if (e.target.closest && e.target.closest('button, input, a, label')) return
+  e.preventDefault()
+  setHold(true)
+}
+
+addEventListener('pointerdown', pointerHold)
+addEventListener('pointerup', () => { if (!input.keys) input.hold = false })
+addEventListener('pointercancel', () => { if (!input.keys) input.hold = false })
+divePad.addEventListener('pointerdown', (e) => {
+  e.preventDefault()
+  e.stopPropagation()
+  requestLandscape()
+  try { divePad.setPointerCapture(e.pointerId) } catch {}
+  setHold(true)
 })
-addEventListener('pointerup', () => (input.hold = false))
-addEventListener('pointercancel', () => (input.hold = false))
+divePad.addEventListener('pointerup', (e) => {
+  if (!input.keys) input.hold = false
+  try { divePad.releasePointerCapture(e.pointerId) } catch {}
+})
+divePad.addEventListener('pointercancel', () => { if (!input.keys) input.hold = false })
+
 const isDiveKey = (e) =>
   e.code === 'Space' || e.code === 'ArrowDown' || e.key === ' ' || e.key === 'ArrowDown' || e.keyCode === 32 || e.keyCode === 40
+
+// Capture phase runs before a focused button turns Space into a click,
+// which used to restart the flight (or scroll) and clear the dive.
 addEventListener('keydown', (e) => {
-  if (isDiveKey(e)) {
-    e.preventDefault()
-    holdOn()
-  }
-})
+  if (!isDiveKey(e)) return
+  if (typingTarget(document.activeElement)) return
+  if (state.screen !== 'play') return
+  e.preventDefault()
+  e.stopPropagation()
+  if (rotateBlocked) return
+  input.keys = true
+  setHold(true)
+}, true)
 addEventListener('keyup', (e) => {
-  if (isDiveKey(e)) input.hold = false
-})
+  if (!isDiveKey(e)) return
+  if (state.screen === 'play') {
+    e.preventDefault()
+    e.stopPropagation()
+  }
+  input.keys = false
+  input.hold = false
+}, true)
+addEventListener('blur', () => { input.hold = false; input.keys = false })
 addEventListener('contextmenu', (e) => e.preventDefault())
+
+function swallowGesture(e) {
+  if (e.target && e.target.closest && e.target.closest('#name, .board')) return
+  e.preventDefault()
+}
+addEventListener('touchmove', swallowGesture, { passive: false })
+addEventListener('gesturestart', swallowGesture, { passive: false })
+addEventListener('gesturechange', swallowGesture, { passive: false })
+canvas.addEventListener('dblclick', (e) => e.preventDefault())
 
 const audio = { ctx: null, muted: localStorage.getItem('puffwing.mute') === '1' }
 function actx() {
@@ -131,6 +237,7 @@ muteBtn.addEventListener('click', () => {
   audio.muted = !audio.muted
   localStorage.setItem('puffwing.mute', audio.muted ? '1' : '0')
   applyMuteIcon()
+  track('mute', { muted: audio.muted })
   if (!audio.muted) tone(880, 880, 0.08, 'triangle', 0.05)
 })
 applyMuteIcon()
@@ -177,6 +284,7 @@ const feverColor = new THREE.Color()
 function processEvents(run) {
   for (const e of run.drainEvents()) {
     if (e.type === 'perfect') {
+      milestone('perfect')
       pop(e.x, e.y, 'PERFECT' + (e.combo > 1 ? ' ×' + e.combo : ''))
       world.emit(e.x, e.y, { count: 12, color: '#ffd1e0', spread: 6, up: 4 })
       sPerfect(e.combo)
@@ -188,13 +296,18 @@ function processEvents(run) {
       world.emit(e.x, e.y - 0.5, { count: 6, color: '#cbb59a', spread: 5, up: 2, ttl: 0.6 })
       sBump()
     } else if (e.type === 'fever') {
+      milestone('fever')
       popCenter('FEVER!', 'pop-fever')
       sFever()
     } else if (e.type === 'feverEnd') {
       $('fevertag').classList.add('hidden')
     } else if (e.type === 'night') {
+      milestone('night')
       popCenter('The sun has set…', 'pop-night')
       sNight()
+    } else if (e.type === 'launch') {
+      milestone('launch')
+      pop(e.x, e.y + 1.4, 'SOAR', 'pop-ghost')
     } else if (e.type === 'breeze') {
       pop(e.x, e.y + 2.5, 'a friendly breeze~', 'pop-ghost')
       world.emit(e.x - 2, e.y, { count: 10, color: '#e8f6ff', spread: 6, up: 1.5, grav: false })
@@ -244,12 +357,23 @@ function startRun(mode) {
     ghost = { replay: state.boardRows[0].replay }
   }
   state.run = new Run({ seed, mode, ghost })
+  state.milestones = {}
+  state.runs++
+  track('run_start', {
+    run: state.runs,
+    mode,
+    gapMs: lastRunEndT ? Date.now() - lastRunEndT : null,
+    ghost: !!ghost
+  })
   world.setTerrain(seed)
   input.hold = false
   $('start').classList.add('hidden')
   $('over').classList.add('hidden')
   $('hud').classList.remove('hidden')
   $('fevertag').classList.add('hidden')
+  $('divepad').classList.remove('hidden')
+  $('ver').textContent = 'v' + GAME_VERSION
+  grabFocus()
   showHint()
   state.hint2 = false
   sStart()
@@ -279,7 +403,7 @@ function renderBoard(el, rows, source) {
   })
 }
 
-async function loadBoard() {
+async function loadBoard(src) {
   const { source, rows } = await lb.fetchDaily(today)
   state.boardRows = rows
   state.boardSource = source
@@ -288,17 +412,32 @@ async function loadBoard() {
   $('ghostname').textContent = rows[0]
     ? "today's #1: " + rows[0].name + ' · ' + Number(rows[0].score).toLocaleString()
     : 'no ghost yet — set the first flight'
+  track('lb_open', { src: src || 'menu' })
 }
-loadBoard()
+loadBoard('boot')
 
 async function endRun() {
   state.screen = 'over'
   input.hold = false
   const run = state.run
+  lastRunEndT = Date.now()
+  track('run_end', {
+    cause: run.endCause || 'beach',
+    score: run.score,
+    distance: run.distance,
+    seconds: Math.round(run.time * 10) / 10,
+    airtime: Math.round(run.airtime * 10) / 10,
+    dives: run.dives,
+    perfects: run.perfects,
+    coins: run.coins,
+    launches: run.launches,
+    mode: run.mode
+  })
   $('hud').classList.add('hidden')
   $('fevertag').classList.add('hidden')
   $('hint').classList.add('hidden')
   $('holdind').classList.add('hidden')
+  $('divepad').classList.add('hidden')
   $('overtitle').textContent = run.postNight > 0 && run.dayLeft <= 0 ? 'Night has fallen' : 'Flight complete'
   $('finalscore').textContent = run.score.toLocaleString()
   $('breakdown').innerHTML =
@@ -320,73 +459,107 @@ async function endRun() {
       res === 'global' ? 'Score submitted to the global leaderboard!'
       : res === 'local' ? 'Saved locally (offline mode)'
       : 'Could not reach the leaderboard — saved locally'
-    await loadBoard()
+    track('lb_submit', { score: run.score, source: res, qualified: res === 'global' || res === 'local' })
+    await loadBoard('gameover')
     renderBoard($('board2'), state.boardRows, state.boardSource)
   } else {
     status.textContent = 'Practice flight — not submitted'
     renderBoard($('board2'), state.boardRows, state.boardSource)
+    track('lb_open', { src: 'gameover' })
   }
   $('over').classList.remove('hidden')
   sEnd()
 }
 
-$('playdaily').addEventListener('click', () => startRun('daily'))
-$('playfree').addEventListener('click', () => startRun('free'))
-$('retry').addEventListener('click', () => startRun(state.run && state.run.mode === 'free' ? 'free' : 'daily'))
+function playOrWait(mode) {
+  requestLandscape()
+  if (shouldBlockForRotate(readOrient())) {
+    pendingMode = mode
+    syncRotate()
+    return
+  }
+  pendingMode = null
+  startRun(mode)
+}
+$('playdaily').addEventListener('click', () => playOrWait('daily'))
+$('playfree').addEventListener('click', () => playOrWait('free'))
+$('retry').addEventListener('click', () => {
+  const mode = state.run && state.run.mode === 'free' ? 'free' : 'daily'
+  requestLandscape()
+  gateNextFlight(() => state.screen === 'play', () => playOrWait(mode))
+})
 $('menu').addEventListener('click', () => {
+  pendingMode = null
   state.screen = 'start'
   state.run = null
+  input.hold = false
   $('over').classList.add('hidden')
   $('hud').classList.add('hidden')
+  $('divepad').classList.add('hidden')
   $('start').classList.remove('hidden')
-  loadBoard()
+  loadBoard('menu')
 })
+$('ver').textContent = 'v' + GAME_VERSION
 
 const clock = new THREE.Clock()
 let menuCam = 0
 let lastTele = 0
 
-window.__puffwing = { state, input, world, camera }
+window.__puffwing = { state, input, world, camera, version: GAME_VERSION, birdRot: 0, rotateBlocked: false }
+syncRotate()
+addEventListener('resize', syncRotate)
+addEventListener('orientationchange', syncRotate)
+try { screen.orientation.addEventListener('change', syncRotate) } catch {}
+try { matchMedia('(orientation: portrait)').addEventListener('change', syncRotate) } catch {}
 
-const zoomFit = () => Math.max(1, Math.min(2.6, 1.7 / camera.aspect))
+function fitBird(group, z) {
+  const read = Math.min(5.6, Math.max(1, z / 46))
+  group.scale.set(group.scale.x * read, group.scale.y * read, read)
+}
 
 renderer.setAnimationLoop(() => {
   const dt = Math.min(clock.getDelta(), 0.05)
   const el = clock.elapsedTime
+  syncRotate()
   if (state.screen === 'play' && state.run) {
     const run = state.run
-    run.update(dt, input.hold)
+    if (!rotateBlocked) run.update(dt, input.hold)
     processEvents(run)
-    world.update(dt, run.camX, run.camY, run.dayT, { bird: run.bird, taken: run.taken })
+    const pose = run.pose()
+    world.update(dt, pose.camX, pose.camY, run.dayT, { bird: run.bird, taken: run.taken })
     bird.group.visible = true
-    bird.group.position.set(run.bird.x, run.bird.y, 1.2)
-    animateBird(bird, { t: el, vx: run.bird.vx, vy: run.bird.vy, grounded: run.bird.grounded })
+    bird.group.position.set(pose.x, pose.y, 1.2)
+    animateBird(bird, {
+      t: el, dt, vx: pose.vx, vy: pose.vy,
+      grounded: pose.grounded, slope: pose.slope, angle: pose.angle, hold: input.hold
+    })
+    const viewZ = frameDistance(pose.camZ, camera.aspect)
+    fitBird(bird.group, viewZ)
+    window.__puffwing.birdRot = bird.group.rotation.z
     if (run.fever) {
       feverColor.setHSL((el * 0.7) % 1, 0.85, 0.62)
-      world.emit(run.bird.x - 1, run.bird.y - 0.2, { count: 2, color: feverColor, spread: 1.6, up: 0.5, ttl: 0.9, grav: false })
+      world.emit(pose.x - 1, pose.y - 0.2, { count: 2, color: feverColor, spread: 1.6, up: 0.5, ttl: 0.9, grav: false })
     }
     const gp = run.ghostPos()
     if (gp && !gp.done) {
       ghostBird.group.visible = true
       ghostBird.group.position.set(gp.x, gp.y, 0.9)
-      animateBird(ghostBird, { t: el * 1.1, vx: 10, vy: 0, grounded: false })
+      animateBird(ghostBird, { t: el * 1.1, dt, vx: 10, vy: 0, grounded: false, slope: 0 })
+      fitBird(ghostBird.group, viewZ)
     } else {
       ghostBird.group.visible = false
     }
-    camera.position.set(run.camX, run.camY, run.camZ * zoomFit())
-    camera.lookAt(run.camX + 4, run.camY - 2, 0)
+    camera.position.set(pose.camX, pose.camY, viewZ)
+    camera.lookAt(pose.camX + 6, pose.camY - 8, 0)
     hud(run)
     const holdind = $('holdind')
     holdind.classList.toggle('hidden', false)
     holdind.classList.toggle('on', input.hold)
+    divePad.classList.toggle('on', input.hold)
     if (el - lastTele > 0.15) {
       lastTele = el
       const b = run.bird
-      holdind.textContent =
-        'v11 · hold ' + (input.hold ? 1 : 0) +
-        ' · air ' + (b.grounded ? 0 : 1) +
-        ' · spd ' + run.speed.toFixed(1) +
-        ' · slp ' + run.terrain.slope(b.x).toFixed(2)
+      holdind.textContent = input.hold ? 'DIVING  v' + GAME_VERSION : 'DIVE  v' + GAME_VERSION
     }
     if (!state.hint2 && run.time > 4 && run.bird.grounded && run.speed < 6) {
       state.hint2 = true
@@ -396,6 +569,7 @@ renderer.setAnimationLoop(() => {
       clearTimeout(hintTimer)
       hintTimer = setTimeout(() => h.classList.add('hidden'), 4200)
     }
+    if (run.dives > 0) milestone('dive')
     if (run.over && state.screen === 'play') endRun()
   } else {
     menuCam += dt * 3
@@ -403,8 +577,8 @@ renderer.setAnimationLoop(() => {
     bird.group.visible = false
     ghostBird.group.visible = false
     $('holdind').classList.add('hidden')
-    camera.position.set(menuCam, 10, 34 * zoomFit())
-    camera.lookAt(menuCam + 8, 3, 0)
+    camera.position.set(menuCam, 10, frameDistance(69, camera.aspect))
+    camera.lookAt(menuCam + 10, 2, 0)
   }
   renderer.render(scene, camera)
 })

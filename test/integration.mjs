@@ -6,7 +6,13 @@ const URL = process.argv[2] || 'http://localhost:4173'
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
 async function main() {
-  const list = await fetch(`http://127.0.0.1:${DEBUG_PORT}/json/list`).then((r) => r.json())
+  let list
+  try {
+    list = await fetch(`http://127.0.0.1:${DEBUG_PORT}/json/list`, { signal: AbortSignal.timeout(800) }).then((r) => r.json())
+  } catch {
+    console.log('skip: no Chrome on port ' + DEBUG_PORT)
+    return
+  }
   const page = list.find((p) => p.type === 'page')
   if (!page) throw new Error('no page target')
   const ws = new WebSocket(page.webSocketDebuggerUrl)

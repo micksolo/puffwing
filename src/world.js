@@ -46,6 +46,11 @@ const DIRT_LO = new THREE.Color('#5e4a3a')
 const DIRT_HI = new THREE.Color('#8a6f57')
 const WATER_LO = new THREE.Color('#a8e6f2')
 const WATER_HI = new THREE.Color('#57b4dd')
+const CREST_WHITE = new THREE.Color('#f6fff4')
+const FAR_LO = new THREE.Color('#7fbfa4')
+const FAR_HI = new THREE.Color('#d7f3e4')
+const FARTHER_LO = new THREE.Color('#8eb4d4')
+const FARTHER_HI = new THREE.Color('#e7f4fb')
 
 function buildTree() {
   const g = new THREE.Group()
@@ -168,9 +173,9 @@ export class World {
 
     this.setTerrain(seed)
 
-    this.mainR = this.makeRibbon(120, 2, 0, (x) => this.terrain.height(x), null)
-    this.bgR1 = this.makeRibbon(80, 5, -55, (x) => this.bg1.height(x * 0.6) * 2.2 + 10, '#a5d8c5')
-    this.bgR2 = this.makeRibbon(100, 6, -125, (x) => this.bg2.height(x * 0.3) * 3 + 22, '#b9d9ea')
+    this.mainR = this.makeRibbon(280, 2, 0, (x) => this.terrain.height(x), 'play')
+    this.bgR1 = this.makeRibbon(80, 5, -55, (x) => this.bg1.height(x * 0.6) * 2.2 + 10, 'far')
+    this.bgR2 = this.makeRibbon(100, 6, -125, (x) => this.bg2.height(x * 0.3) * 3 + 22, 'farther')
   }
 
   setTerrain(seed) {
@@ -206,11 +211,11 @@ export class World {
         'uniform vec3 top; uniform vec3 bottom; varying vec2 vUv; void main(){ gl_FragColor = vec4(mix(bottom, top, pow(vUv.y, 0.7)), 1.0); }',
       depthWrite: false
     })
-    this.sky = new THREE.Mesh(new THREE.PlaneGeometry(600, 340), this.skyMat)
+    this.sky = new THREE.Mesh(new THREE.PlaneGeometry(1800, 1100), this.skyMat)
     this.sky.position.z = -150
     this.sky.frustumCulled = false
     this.scene.add(this.sky)
-    this.scene.fog = new THREE.Fog(0xdff4ff, 80, 240)
+    this.scene.fog = new THREE.Fog(0xdff4ff, 480, 1400)
   }
 
   buildCelestials() {
@@ -311,66 +316,93 @@ export class World {
     this.scene.add(this.shadow)
   }
 
-  makeRibbon(N, step, z, hFn, flatColor) {
-    const pos = new Float32Array(N * 2 * 3)
-    const col = flatColor ? null : new Float32Array(N * 2 * 3)
+  makeRibbon(N, step, z, hFn, mode) {
+    // Three rows on the playable hill: a lit crest, a slope-shaded face,
+    // and the dirt underneath. Distant hills are a two-row card with the
+    // same slope paint, just paler.
+    const rows = mode === 'play' ? 3 : 2
+    const pos = new Float32Array(N * rows * 3)
+    const col = new Float32Array(N * rows * 3)
     const idx = []
     for (let i = 0; i < N - 1; i++) {
-      const a = i * 2
-      idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2)
+      for (let row = 0; row < rows - 1; row++) {
+        const a = i * rows + row
+        const b = a + rows
+        idx.push(a, a + 1, b, a + 1, b + 1, b)
+      }
     }
     const geo = new THREE.BufferGeometry()
     geo.setAttribute('position', new THREE.BufferAttribute(pos, 3))
-    if (col) geo.setAttribute('color', new THREE.BufferAttribute(col, 3))
+    geo.setAttribute('color', new THREE.BufferAttribute(col, 3))
     geo.setIndex(idx)
-    const mat = flatColor ? L(flatColor) : L('#ffffff', { vertexColors: true })
+    // MeshLambert with no normals is black on the static three.js build:
+    // the shader's normal attribute stays (0,0,0) and the light term is zero.
+    // Basic + painted colors is what actually shows up, and it carries the slope.
+    const mat = new THREE.MeshBasicMaterial({ color: '#ffffff', vertexColors: true })
     const mesh = new THREE.Mesh(geo, mat)
     mesh.frustumCulled = false
     this.scene.add(mesh)
-    return { mesh, pos, col, N, step, z, hFn, off: -(N * step) * 0.4 }
+    return { mesh, pos, col, N, rows, step, z, hFn, mode, off: -(N * step) * 0.4 }
   }
 
-  updateRibbon(r, camX) {
+  updateRibbon(r, camX, dayT) {
     const x0 = camX + r.off
+    const dayLight = 0.4 + 0.6 * Math.max(0, Math.min(1, (dayT - 0.08) / 0.7))
+    const rows = r.rows
     for (let i = 0; i < r.N; i++) {
       const x = x0 + i * r.step
       const h = r.hFn(x)
-      const k = i * 6
-      r.pos[k] = x
-      r.pos[k + 1] = h
-      r.pos[k + 2] = r.z
-      r.pos[k + 3] = x
-      r.pos[k + 4] = -45
-      r.pos[k + 5] = r.z
+      const base = i * rows * 3
+      const shoulder = rows === 3 ? h - 2.6 : -240
+      r.pos[base] = x
+      r.pos[base + 1] = h + (rows === 3 ? 0.15 : 0)
+      r.pos[base + 2] = r.z + (rows === 3 ? 1.15 : 0)
+      r.pos[base + 3] = x
+      r.pos[base + 4] = shoulder
+      r.pos[base + 5] = r.z + (rows === 3 ? 0.25 : 0)
+      if (rows === 3) {
+        r.pos[base + 6] = x
+        r.pos[base + 7] = -240
+        r.pos[base + 8] = r.z
+      }
       if (r.col) {
-        let tr, tg, tb, br, bg2, bb
-        if (h < -12) {
-          const wd = Math.max(0, Math.min(1, (-12 - h) / 16))
-          const c = this.cTmp.copy(WATER_LO).lerp(WATER_HI, wd)
-          tr = c.r
-          tg = c.g
-          tb = c.b
-          const d = this.cTmp.copy(DIRT_LO).lerp(DIRT_HI, 0.2)
-          br = d.r
-          bg2 = d.g
-          bb = d.b
-        } else {
-          const t = Math.max(0, Math.min(1, (h + 16) / 34))
-          const c = this.cTmp.copy(GRASS_LO).lerp(GRASS_HI, t)
-          tr = c.r
-          tg = c.g
-          tb = c.b
-          const d = this.cTmp.copy(DIRT_LO).lerp(DIRT_HI, t)
-          br = d.r
-          bg2 = d.g
-          bb = d.b
+        const h2 = r.hFn(x + r.step)
+        const slope = (h2 - h) / r.step
+        const steep = Math.min(1, Math.abs(slope) * 0.8)
+        const downhill = slope < 0
+        const sun = (downhill ? 1.12 + 0.34 * steep : 0.62 - 0.22 * steep) * dayLight
+        const warm = downhill ? 0.07 * steep : 0
+        const cool = downhill ? 0 : 0.06 * steep
+        const paint = (dst, src, mul, extraR, extraB) => {
+          r.col[dst] = Math.min(1, src.r * mul + extraR)
+          r.col[dst + 1] = Math.min(1, src.g * mul)
+          r.col[dst + 2] = Math.min(1, src.b * mul + extraB)
         }
-        r.col[k] = tr
-        r.col[k + 1] = tg
-        r.col[k + 2] = tb
-        r.col[k + 3] = br
-        r.col[k + 4] = bg2
-        r.col[k + 5] = bb
+        if (r.mode === 'play') {
+          let top, dirt
+          if (h < -12) {
+            const wd = Math.max(0, Math.min(1, (-12 - h) / 16))
+            top = this.cTmp.copy(WATER_LO).lerp(WATER_HI, wd)
+            dirt = this.cTop.copy(DIRT_LO).lerp(DIRT_HI, 0.25)
+          } else {
+            const t = Math.max(0, Math.min(1, (h + 16) / 34))
+            top = this.cTmp.copy(GRASS_LO).lerp(GRASS_HI, 0.35 + 0.65 * t)
+            dirt = this.cTop.copy(DIRT_LO).lerp(DIRT_HI, t)
+          }
+          const crest = this.cBot.copy(top).lerp(CREST_WHITE, downhill ? 0.42 : 0.12)
+          paint(base, crest, sun, warm, cool * 0.4)
+          paint(base + 3, top, sun * 0.92, warm * 0.6, cool)
+          paint(base + 6, dirt, (0.78 + 0.22 * (downhill ? 1 : 0.7)) * dayLight, 0, cool * 0.5)
+        } else {
+          const lo = r.mode === 'far' ? FAR_LO : FARTHER_LO
+          const hi = r.mode === 'far' ? FAR_HI : FARTHER_HI
+          const t = Math.max(0, Math.min(1, (h + 8) / 40))
+          const face = this.cTmp.copy(lo).lerp(hi, t)
+          const crest = this.cBot.copy(face).lerp(CREST_WHITE, downhill ? 0.28 : 0.08)
+          const farSun = downhill ? 1.05 + 0.2 * steep : 0.72 - 0.16 * steep
+          paint(base, crest, farSun, 0, 0)
+          paint(base + 3, face, farSun * 0.9, 0, 0)
+        }
       }
     }
     r.mesh.geometry.attributes.position.needsUpdate = true
@@ -418,7 +450,7 @@ export class World {
   }
 
   updateDecor(dt, camX) {
-    const want = this.terrain.decorInRange(camX - 80, camX + 140)
+    const want = this.terrain.decorInRange(camX - 200, camX + 360)
     const wantIds = new Set(want.map((w) => w.id))
     for (const w of want) {
       if (this.decor.has(w.id)) continue
@@ -443,7 +475,7 @@ export class World {
   }
 
   updateCoins(dt, camX, taken) {
-    const want = this.terrain.coinArcsInRange(camX - 80, camX + 140)
+    const want = this.terrain.coinArcsInRange(camX - 200, camX + 360)
     const wantIds = new Set(want.map((w) => w.id))
     for (const w of want) {
       if (this.coinMap.has(w.id)) continue
@@ -528,9 +560,9 @@ export class World {
   update(dt, camX, camY, dayT, extras = {}) {
     this.tTotal += dt
     this.updateSky(camX, camY, dayT)
-    this.updateRibbon(this.mainR, camX)
-    this.updateRibbon(this.bgR1, camX)
-    this.updateRibbon(this.bgR2, camX)
+    this.updateRibbon(this.mainR, camX, dayT)
+    this.updateRibbon(this.bgR1, camX, dayT)
+    this.updateRibbon(this.bgR2, camX, dayT)
     this.updateCelestials(dt, camX, dayT)
     this.updateClouds(dt, camX)
     this.updateDecor(dt, camX)
